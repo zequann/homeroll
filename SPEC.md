@@ -244,20 +244,25 @@ A run is checked whole, then paid in batches (ADR-0001). Only the Homeroll admin
 
 ```text
 Employer {
-  treasury: u128,                 // tUSDC base units not reserved by any run
-  buffer: u128,                   // minimum to keep after any run
-  onboarding: bool,               // true until the first run is submitted
+  treasury: u128,          // tUSDC base units not reserved by any run
+  buffer: u128,            // minimum to keep after any run
+  onboarding: bool,        // true until the first run is submitted
   payees: Map<AccountId, Payee>,
-  paid: Set<(period, AccountId)>, // payee has a line for this period that is not failed, skipped or cancelled
-  runs: Map<u64, Run>,
-  next_run_id: u64
+  runs: Vec<Run>           // run id is the index, from 0
 }
 Payee { cap: u128, active_from: u64, pending_cap: Option<(u128, u64)> }
-Run { period: String, lines: Vec<RunLine>, next: u32, status: Pending | Done | Cancelled }
+Run { period: String, lines: Vec<RunLine> }
 RunLine { account_id: AccountId, amount: u128, status: Reserved | Sent | Paid | Failed | Skipped | Cancelled }
-Config { token: AccountId, hold_ns: u64 /* 48h in demo deploy */, max_lines_per_run: u32,
-         max_lines_per_call: u32, max_payees_per_employer: u32 }
+Config { hold_ns: u64, max_lines_per_run: u32, max_payees_per_employer: u32 }
 ```
+
+A payee holds a period while any run of that period has a line for them in `Reserved`, `Sent`, or `Paid`. The line status is the only record of that fact.
+
+A run's status comes from its lines. It is `Pending` while any line is `Reserved`, `Cancelled` if any line is `Cancelled`, and `Done` otherwise.
+
+Run ids are per employer, start at 0, and are the index in `runs`.
+
+Initial config is `max_lines_per_run = 40`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. These are the demo floor (§4 pays 40 workers). Q3 measures the gas ceiling and replaces the line limits. `token` and `max_lines_per_call` are added with `ft_on_transfer` and `pay_run`.
 
 **Methods:**
 
@@ -265,7 +270,7 @@ Config { token: AccountId, hold_ns: u64 /* 48h in demo deploy */, max_lines_per_
 |---|---|---|
 | `register_employer(employer: AccountId, buffer: U128)` | admin | Onboards an employer with `onboarding = true`. Already registered → `ERR_EMPLOYER_EXISTS` |
 | `ft_on_transfer(sender_id, amount, msg)` | `tusdc` only | `msg = {"employer":"<id>"}` credits that employer's treasury. Reject other tokens (`ERR_WRONG_TOKEN`) and unknown employers (`ERR_UNKNOWN_EMPLOYER`) by returning the full amount |
-| `add_payee(account_id, cap: U128)` | employer | At most `max_payees_per_employer` → else `ERR_TOO_MANY_PAYEES`. During onboarding → active immediately. After onboarding → `active_from = now + hold_ns` (the 48-hour hold) |
+| `add_payee(account_id, cap: U128)` | employer | At most `max_payees_per_employer` → else `ERR_TOO_MANY_PAYEES`. During onboarding → active immediately. After onboarding → `active_from = now + hold_ns` (the 48-hour hold). Re-adding a payee replaces it (new cap and `active_from`) and it still counts as one payee |
 | `update_cap(account_id, cap: U128)` | employer | Decrease: immediate. Increase: after `hold_ns` |
 | `remove_payee(account_id)` | employer | Immediate. Their lines not yet sent are skipped by `pay_run` |
 | `submit_run(period: String, lines: Vec<PayLine>) -> u64` | employer | Checks the whole run and reserves its total; returns the run id. See rules below |
@@ -274,35 +279,47 @@ Config { token: AccountId, hold_ns: u64 /* 48h in demo deploy */, max_lines_per_
 | `withdraw(amount: U128)` | employer | To the employer account only |
 | `get_employer(employer)`, `get_payees(employer)`, `get_run(employer, run_id)`, `get_runs(employer, period)` | anyone | Views |
 
-`PayLine { account_id: AccountId, amount: U128 }`. `period` format `YYYY-MM`.
+`PayLine { account_id: AccountId, amount: U128 }`. `period` format is exactly `YYYY-MM`.
+
+`get_employer(employer)` returns `{treasury: U128, buffer: U128, onboarding: bool, payee_count: u32}`, or `null` when the employer is unknown.
+
+`get_runs(employer, period)` returns `[{run_id: u64, period, status, lines: [{account_id, amount: U128, status}]}]`, oldest first. A known employer with no matching runs returns `[]`, including when `period` is not canonical `YYYY-MM`. An unknown employer returns `null`.
+
+Events for this behaviour, each with `data` as a one-element array. JSON timestamps are `U64` strings, because nanoseconds exceed JavaScript's safe integers.
+
+- `employer_registered` with `{employer, buffer}`
+- `payee_added` with `{employer, account_id, cap, active_from}`
+- `run_submitted` with `{employer, run_id, period, total, line_count}`
 
 Other payroll errors: `ERR_NOT_ADMIN` (caller is not the admin), `ERR_NOT_EMPLOYER` (caller is not a registered employer), `ERR_UNKNOWN_PAYEE` (update/remove of a payee that does not exist), `ERR_INSUFFICIENT_TREASURY` (withdraw above balance), `ERR_RUN_NOT_FOUND`, `ERR_RUN_COMPLETE` (`pay_run` or `cancel_run` on a run with no lines left to send).
 
 **`submit_run` rules — all-or-nothing. If any check fails, the call panics: no run is stored and nothing is reserved or paid.**
 
+A caller that is not an employer fails with `ERR_NOT_EMPLOYER` before check 1. Checks 3 to 6 each finish for every line before the next check starts. The error names the lowest failing index. `ERR_DUPLICATE_PAYEE` names the later of the two lines.
+
 1. `lines.len() <= max_lines_per_run` → else `ERR_TOO_MANY_LINES`
-2. `period` is open: the current or the previous calendar month, by block time in UTC → else `ERR_PERIOD_NOT_OPEN`
+2. `period` is the current or the previous calendar month, by block time in UTC, and is written exactly `YYYY-MM` → else `ERR_PERIOD_NOT_OPEN`
 3. Every payee exists and `now >= active_from` → else `ERR_PAYEE_NOT_ACTIVE:<index>:<account>`
 4. Every `amount <= cap` → else `ERR_ABOVE_WAGE_CAP:<index>:<account>`
 5. No account appears twice in `lines` → else `ERR_DUPLICATE_PAYEE:<index>:<account>`
-6. `(period, payee)` is not already in `paid` → else `ERR_ALREADY_PAID:<index>:<account>`
-7. `sum(amounts) <= treasury - buffer` → else `ERR_BELOW_BUFFER`
-8. Then: deduct the total from the treasury, add each `(period, payee)` to `paid`, store the run as `Pending` with every line `Reserved`, set `onboarding = false`, emit `run_submitted`.
+6. The payee does not already hold `period` → else `ERR_ALREADY_PAID:<index>:<account>`
+7. `sum(amounts) <= treasury - buffer`. If `treasury < buffer`, or the sum overflows → `ERR_BELOW_BUFFER`
+8. Then: deduct the total from the treasury, store the run with every line `Reserved` (derived status `Pending`), set `onboarding = false`, emit `run_submitted`. The new lines hold the period.
 
 **`pay_run` rules:**
 
 1. The run exists → else `ERR_RUN_NOT_FOUND`. It has `Reserved` lines → else `ERR_RUN_COMPLETE`.
 2. For each of the next `max_lines_per_call` lines:
-   - Payee no longer active (removed, or re-added and on hold) → line `Skipped`, amount back to the treasury, `(period, payee)` removed from `paid`, emit `payroll_line_skipped`.
+   - Payee no longer active (removed, or re-added and on hold) → line `Skipped`, amount back to the treasury, emit `payroll_line_skipped`. A `Skipped` line does not hold the period.
    - Otherwise → line `Sent`, emit `payroll_line_sent`, `ft_transfer` to the payee with callback `on_line_paid`.
-3. When no line is left `Reserved`, the run is `Done`.
-4. `on_line_paid`: success → line `Paid`. Failure → line `Failed`, amount back to the treasury, `(period, payee)` removed from `paid`, emit `payroll_line_failed`.
+3. When no line is left `Reserved`, the derived status is `Done`, or `Cancelled` if any line is `Cancelled`.
+4. `on_line_paid`: success → line `Paid`. Failure → line `Failed`, amount back to the treasury, emit `payroll_line_failed`. A `Failed` line does not hold the period.
 
-**`cancel_run`:** every `Reserved` line becomes `Cancelled`, its amount goes back to the treasury and its `(period, payee)` is removed from `paid`. The run becomes `Cancelled` and `run_cancelled` is emitted. Lines already sent are not affected.
+**`cancel_run`:** every `Reserved` line becomes `Cancelled` and its amount goes back to the treasury. The derived status is `Cancelled`. `run_cancelled` is emitted. Lines already sent stay as they are.
 
 A failed, skipped or cancelled line can be paid later in a new run for the same period ("Pay missed worker", §9.1). A worker already paid for a period cannot get a top-up through payroll (§18).
 
-**Gas.** `submit_run` makes no transfers, so a whole run fits in one call. `pay_run` makes one `ft_transfer` + callback per line. The per-transaction gas limit is 1000 Tgas at the time of writing (confirm in the sandbox, Q3). Measure in sandbox integration tests and set `max_lines_per_call` so one `pay_run` stays under ~900 Tgas, and `max_lines_per_run` so `submit_run` does too.
+**Gas.** `submit_run` makes no transfers, so a whole run fits in one call. `pay_run` makes one `ft_transfer` + callback per line. The per-transaction gas limit is 1000 Tgas at the time of writing (confirm in the sandbox, Q3). Measure in sandbox integration tests and set `max_lines_per_call` so one `pay_run` stays under ~900 Tgas, and replace `max_lines_per_run` so `submit_run` does too. Until that measurement, the line limits stay at the demo floor of 40.
 
 **Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `perabotjaya.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
 
@@ -541,6 +558,7 @@ Rate-limited per visitor, with a daily cap overall. Rough cost ≈0.3 testnet NE
 - Demo FX (constants in `lib/fx`, labelled as demo): **RM4.20 per USDC**, **৳28.60 per RM**.
 - Conversion only in `lib/fx`. UI never computes FX inline.
 - Rounding: round down on payouts to users, round up on fees. Document in code.
+- Balances and shortfalls shown in RM round to the nearest sen.
 - Currency risk (README): balances held in USDC but shown in RM move with FX. Production would convert at the edges and hold USDC briefly; a ringgit stablecoin is a future option (BNM pilots in 2026 are wholesale).
 
 ---
@@ -647,7 +665,7 @@ homeroll/
 | D5 | **Worker accounts are pseudonymous.** Business accounts keep readable names. |
 | D6 | **Team of two, both developers.** Work is split by area of the repo (§16). |
 | D7 | Owner and workers sign with **demo keys held by the server** in P0, behind a "Demo mode" banner. Real wallet sign-in (`@hot-labs/near-connect`) is P1. |
-| D8 | **Submit once, at the end** (target 14 Nov 18:00 MYT). A submission cannot be edited. |
+| D8 | **Submit once, at the end.** A submission cannot be edited. The organizer deadline stays in §17 and `HACKATHON.md`. |
 | D9 | **Payroll runs are checked whole, then paid in batches** (`submit_run` + `pay_run`). Several runs per period are allowed; a payee is paid at most once per period. ADR-0001. |
 | D10 | **The Homeroll admin onboards employers**, with a payee limit and a minimum first lender deposit. ADR-0002. |
 | D11 | **Tracks: `realworld` (main) and `security`.** `privacy` and `business` are dropped: there is no real private inference, and a person runs payroll. |
@@ -661,12 +679,12 @@ homeroll/
 
 ### Open questions
 
-| # | Question | Owner | When | Fallback |
+| # | Question | Owner | Fallback |
 |---|---|---|---|---|
-| Q2 | Confirm on testnet that the relayer pays the 1 yocto in a delegate action, and that a failed call refunds the deposit to the worker (NEP-366 docs say so) | On-chain dev | 1 Nov | Fund worker accounts with 0.05 NEAR |
-| Q3 | Max lines per `pay_run` and per `submit_run` under ~900 Tgas (limit 1000 Tgas — confirm) | On-chain dev | 2–3 Nov | Smaller batches |
-| Q7 | How much of the agent key's 1 NEAR allowance one run uses, and whether gas refunds go back to it | On-chain dev | 1 Nov | Reset demo adds a fresh key |
-| Q8 | Gas `ft_transfer` needs, to set the relayer's gas cap | On-chain dev | 5–7 Nov | Keep 30 Tgas |
+| Q2 | Confirm on testnet that the relayer pays the 1 yocto in a delegate action, and that a failed call refunds the deposit to the worker (NEP-366 docs say so) | On-chain dev | Fund worker accounts with 0.05 NEAR |
+| Q3 | Max lines per `pay_run` and per `submit_run` under ~900 Tgas (limit 1000 Tgas — confirm) | On-chain dev | Smaller batches |
+| Q7 | How much of the agent key's 1 NEAR allowance one run uses, and whether gas refunds go back to it | On-chain dev | Reset demo adds a fresh key |
+| Q8 | Gas `ft_transfer` needs, to set the relayer's gas cap | On-chain dev | Keep 30 Tgas |
 
 **How we answer them: on testnet, as real as possible, no real money.** Testnet runs the same protocol and fee rules as mainnet, and its NEAR is free from the faucet. Each measurement is a script in `scripts/measure/` that prints JSON (tx hashes, balances, gas) and is re-run after every contract change. Results go into this table with the tx hashes, so judges can check them in the explorer. The sandbox integration tests repeat the same checks in CI, but testnet numbers are the ones we quote.
 
@@ -680,7 +698,7 @@ Closed: Q1 — no NEAR AI Cloud credits, so the model is mocked (D12). Q4 — th
 
 ---
 
-## 16. Team, workstreams and milestones
+## 16. Team and workstreams
 
 ### Workstreams
 
@@ -691,20 +709,20 @@ Closed: Q1 — no NEAR AI Cloud credits, so the model is mocked (D12). Q4 — th
 
 **Working rules:** contract methods and error codes in §7 change only by agreement, and SPEC is updated in the same PR. Small PRs, one area each. 15-minute sync every day.
 
-### Schedule
+### Build order
 
-| Dates | On-chain dev | App dev | Done when |
+No calendar. Do the rows in order. A row is done when its check passes.
+
+| Step | On-chain dev | App dev | Done when |
 |---|---|---|---|
-| 1 Nov | Repo, CI, testnet accounts, contract skeletons, Q2 test | App skeleton, `FakeChainClient`, fixtures | CI green; app runs on fake data |
-| 2–5 Nov | `tusdc`, factory, payroll with tests; gas measurement (Q3) | Owner console and worker app screens on fake data | Payroll rules R3–R6 pass in sandbox |
-| 5–7 Nov | Pool with tests, deploy to testnet, relayer | Mock partners, Intents quote, send-home and cash-out screens | A worker sends a gasless `ft_transfer` on testnet |
-| 7–9 Nov | Invoice agent (mock model), payroll agent with function-call key | Switch screens to `NearChainClient` | Demo steps 1–3 run from the UI on testnet |
-| 9–10 Nov | Five attack scripts | Attack lab page | `pnpm attacks` all pass |
-| 11–12 Nov | End-to-end runs, bug fixes. **Feature freeze 12 Nov** | same | Three clean runs in a row |
-| 13 Nov | README technical sections, architecture diagram | Record and edit video, README intro | Video under 2.5 minutes |
-| 14 Nov | Post demo on own X; submit by 18:00 MYT | Final review of README and video | Submitted |
-
-> Reset demo (§9.6, P0) is not scheduled in this table yet. The team will revisit the plan.
+| 1 | Repo, CI, testnet accounts, contract skeletons, Q2 measurement | App skeleton, `FakeChainClient`, fixtures | CI green; app runs on fake data |
+| 2 | `tusdc`, factory, payroll with tests; gas measurement (Q3) | Owner console and worker app screens on fake data | Payroll rules R3–R6 pass in sandbox |
+| 3 | Pool with tests, deploy to testnet, relayer | Mock partners, Intents quote, send-home and cash-out screens | A worker sends a gasless `ft_transfer` on testnet |
+| 4 | Invoice agent (mock model), payroll agent with function-call key | Switch screens to `NearChainClient` | Demo steps 1–3 run from the UI on testnet |
+| 5 | Five attack scripts | Attack lab page | `pnpm attacks` all pass |
+| 6 | End-to-end runs and bug fixes. Reset demo (§9.6) is part of this step | same | Three clean runs in a row |
+| 7 | README technical sections, architecture diagram | Record and edit video, README intro | Video under 2.5 minutes |
+| 8 | Post demo on own X, then submit | Final review of README and video | Submitted |
 
 ### Priorities
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "files": {
-    "includes": ["**", "!**/target", "!**/.next", "!homeroll-prototype.html"]
+    "includes": ["**", "!**/target", "!**/.next", "!homeroll-prototype.html", "!.agents"]
   },
   "formatter": {
     "indentStyle": "space",
