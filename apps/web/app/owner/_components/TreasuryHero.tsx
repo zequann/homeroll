@@ -1,0 +1,204 @@
+"use client";
+
+import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { Button } from "@/components/Button";
+import { ContractErrorNote } from "@/components/ContractErrorNote";
+import { Money } from "@/components/Money";
+import { RollingMoney } from "@/components/RollingMoney";
+import { ConnectButton } from "@/components/WalletButton";
+import { formatRm, type Sen } from "@/lib/fx";
+import { payNextBatch, submitPayroll } from "../actions";
+import styles from "./owner.module.css";
+import {
+  buttonEnabled,
+  buttonLabel,
+  deriveRunState,
+  IDLE,
+  type LocalPhase,
+  type RunFacts,
+  type RunState,
+} from "./run-state";
+
+export interface TreasuryHeroProps {
+  companyName: string;
+  treasurySen: Sen;
+  treasuryUsdc: string;
+  bufferSen: Sen;
+  periodLabel: string;
+  facts: RunFacts;
+  /** The owner demo account is connected, so the page can sign. */
+  connected: boolean;
+}
+
+export function TreasuryHero(props: TreasuryHeroProps) {
+  const { companyName, treasurySen, treasuryUsdc, bufferSen, periodLabel, facts, connected } =
+    props;
+  const router = useRouter();
+  const [local, setLocal] = useState<LocalPhase>(IDLE);
+  const [pending, start] = useTransition();
+  const state = deriveRunState(facts, local);
+
+  async function payAll(runId: number, total: number, from: number) {
+    setLocal({ checking: false, rejection: null, paying: { paid: from, total, runId } });
+    for (;;) {
+      const batch = await payNextBatch(runId);
+      if (!batch.ok) {
+        const failure =
+          batch.reason === "rejected"
+            ? batch.failure
+            : {
+                sentence: "Connect the owner wallet to pay.",
+                code: "NOT_CONNECTED",
+                ruleCaption: null,
+              };
+        setLocal({ ...IDLE, rejection: { failure, atTreasury: treasurySen } });
+        return;
+      }
+      setLocal({
+        checking: false,
+        rejection: null,
+        paying: { paid: batch.paid, total: batch.total, runId },
+      });
+      if (batch.done) break;
+    }
+    setLocal(IDLE);
+  }
+
+  const run = () => {
+    // The label answers on this frame, before any network call.
+    if (state.kind === "paying" && !state.inFlight) {
+      const { runId, paid, total } = state;
+      setLocal({ checking: false, rejection: null, paying: { paid, total, runId } });
+      start(() => payAll(runId, total, paid));
+      return;
+    }
+    setLocal({ checking: true, paying: null, rejection: null });
+    start(async () => {
+      const submitted = await submitPayroll();
+      if (!submitted.ok) {
+        if (submitted.reason === "not-connected") {
+          setLocal(IDLE);
+          return;
+        }
+        setLocal({
+          ...IDLE,
+          rejection: {
+            failure: submitted.failure,
+            shortfall: submitted.failure.shortfallSen ?? undefined,
+            atTreasury: treasurySen,
+          },
+        });
+        return;
+      }
+      await payAll(submitted.runId, submitted.lineCount, 0);
+    });
+  };
+
+  const canAct = state.kind !== "done" && state.kind !== "nothingToRun";
+
+  return (
+    <div className={styles.hero}>
+      <div className={styles.heroCol}>
+        <p className="t-caption ink-3">Treasury · {companyName}</p>
+        <div className={`t-display ${styles.treasury}`}>
+          <RollingMoney value={treasurySen} />
+        </div>
+        <p className="t-caption ink-3">
+          {treasuryUsdc} · keeps a {formatRm(bufferSen)} buffer
+        </p>
+
+        <StatusLine state={state} facts={facts} bufferSen={bufferSen} />
+
+        <div className={styles.heroActions}>
+          {canAct && !connected ? (
+            <ConnectButton account="owner" />
+          ) : (
+            <Button variant="primary" disabled={!buttonEnabled(state, pending)} onClick={run}>
+              {buttonLabel(state)}
+            </Button>
+          )}
+          {state.kind === "short" && connected ? (
+            <Button
+              variant="tinted"
+              onClick={() => router.replace("/owner?tab=invoices", { scroll: false })}
+            >
+              Take advance
+            </Button>
+          ) : null}
+          <span className="t-caption ink-3">
+            {periodLabel} · {facts.lineCount} workers · <Money value={facts.totalSen} />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusLine({
+  state,
+  facts,
+  bufferSen,
+}: {
+  state: RunState;
+  facts: RunFacts;
+  bufferSen: Sen;
+}) {
+  let body: React.ReactNode = null;
+  switch (state.kind) {
+    case "ready":
+      body = <p>{formatRm(state.leftAfter)} left after this run.</p>;
+      break;
+    case "short":
+      body = (
+        <p className={styles.warn}>
+          <WarningCircle size={20} weight="regular" />
+          <span>
+            Short by {formatRm(state.shortfall)}. October payroll needs{" "}
+            {formatRm((facts.totalSen + bufferSen) as Sen)}, including the {formatRm(bufferSen)}{" "}
+            buffer.
+          </span>
+        </p>
+      );
+      break;
+    case "checking":
+      body = <p>The payroll contract is checking all {facts.lineCount} pay lines.</p>;
+      break;
+    case "paying":
+      body = (
+        <p>
+          Paid {state.paid} of {state.total}
+          {state.inFlight ? "" : ". This run was left half paid."}
+        </p>
+      );
+      break;
+    case "done":
+      body = (
+        <p className={styles.ok}>
+          <CheckCircle size={20} weight="regular" />
+          <span>
+            October paid · {state.lineCount} of {state.lineCount} · {formatRm(state.total)}
+          </span>
+        </p>
+      );
+      break;
+    case "rejected":
+      body = (
+        <ContractErrorNote
+          sentence={state.failure.sentence}
+          code={state.failure.code}
+          ruleCaption={state.failure.ruleCaption}
+        />
+      );
+      break;
+    case "nothingToRun":
+      body = <p>Every worker already has October pay.</p>;
+      break;
+  }
+  return (
+    <div className={styles.status} aria-live="polite">
+      {body}
+    </div>
+  );
+}

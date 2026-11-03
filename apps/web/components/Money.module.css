@@ -1,0 +1,12 @@
+.money {
+  position: relative;
+  white-space: nowrap;
+}
+.prefix {
+  margin-right: 0.04em;
+}
+.hung {
+  position: absolute;
+  right: 100%;
+  margin-right: 0.08em;
+}

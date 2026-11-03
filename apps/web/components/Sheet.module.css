@@ -1,0 +1,56 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--scrim);
+}
+
+.anchored,
+.bottom {
+  position: fixed;
+  z-index: 70;
+  background: var(--sheet-bg);
+  -webkit-backdrop-filter: var(--blur-sheet);
+  backdrop-filter: var(--blur-sheet);
+  /* 0.5px inner top highlight: light catching the material */
+  box-shadow:
+    var(--shadow-sheet),
+    inset 0 0.5px 0 rgb(255 255 255 / 0.6);
+  outline: none;
+}
+
+.anchored {
+  /* Opens 8px below the toolbar, so two translucent layers never overlap. */
+  top: calc(var(--toolbar-h) + 8px);
+  right: var(--gutter);
+  width: 360px;
+  max-height: calc(100dvh - var(--toolbar-h) - 24px);
+  overflow-y: auto;
+  border-radius: var(--r-panel);
+  transform-origin: top right;
+}
+
+.bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 85dvh;
+  overflow-y: auto;
+  border-radius: var(--r-panel) var(--r-panel) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  touch-action: pan-y;
+}
+
+.grabber {
+  display: flex;
+  justify-content: center;
+  padding: var(--s-2) 0 var(--s-1);
+  cursor: grab;
+  touch-action: none;
+}
+.grabber span {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ink-4);
+}

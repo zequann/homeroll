@@ -1,0 +1,95 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-control);
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 100ms ease-out,
+    background-color 100ms ease-out;
+}
+.small {
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  font-size: 0.9375rem;
+}
+.full {
+  width: 100%;
+}
+.icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.btn:active,
+.btn[data-pressed] {
+  transform: scale(0.97);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.primary:active,
+.primary[data-pressed] {
+  background: var(--accent-pressed);
+}
+.primary:disabled {
+  background: var(--ink-5);
+  color: var(--ink-3);
+  transform: none;
+}
+
+.tinted {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tinted:active,
+.tinted[data-pressed] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.tinted:disabled {
+  color: var(--ink-3);
+  background: var(--ink-5);
+  transform: none;
+}
+
+.plain {
+  background: transparent;
+  color: var(--ink-1);
+}
+.plain:active,
+.plain[data-pressed] {
+  background: var(--ink-5);
+}
+.plain:disabled {
+  color: var(--ink-3);
+  transform: none;
+}
+
+@media (hover: hover) {
+  .plain:hover:not(:disabled) {
+    background: var(--ink-5);
+  }
+}
+
+/* Reduced motion keeps the colour step and drops the scale. */
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: background-color 100ms ease-out;
+  }
+  .btn:active,
+  .btn[data-pressed] {
+    transform: none;
+  }
+}

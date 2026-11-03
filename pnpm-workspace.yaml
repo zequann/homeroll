@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - fixtures
 
 # One exact version per tool for the whole repo; packages refer to it as "catalog:".
 catalog:
@@ -8,3 +9,4 @@ catalog:
   "@types/node": 24.19.2
   typescript: 6.0.3
   vitest: 5.0.4
+  zod: 4.6.7

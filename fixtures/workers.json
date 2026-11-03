@@ -1,0 +1,338 @@
+[
+  {
+    "name": "w-7k2q9x",
+    "displayName": "Rahim Uddin",
+    "country": "Bangladesh",
+    "role": "Sanding",
+    "wageSen": 195000,
+    "capSen": 260000,
+    "possessive": "his",
+    "family": {
+      "label": "Amma",
+      "wallet": "bKash •••• 4471",
+      "city": "Dhaka"
+    }
+  },
+  {
+    "name": "w-3m8d1p",
+    "displayName": "Sujan Tamang",
+    "country": "Nepal",
+    "role": "Assembly",
+    "wageSen": 188000,
+    "capSen": 260000,
+    "possessive": "his"
+  },
+  {
+    "name": "w-9t4c6v",
+    "displayName": "Agus Santoso",
+    "country": "Indonesia",
+    "role": "Upholstery",
+    "wageSen": 210000,
+    "capSen": 270000,
+    "possessive": "his"
+  },
+  {
+    "name": "w-2h5n8r",
+    "displayName": "Kyaw Zin",
+    "country": "Myanmar",
+    "role": "Packing",
+    "wageSen": 176000,
+    "capSen": 250000,
+    "possessive": "his"
+  },
+  {
+    "name": "w-6b1x4k",
+    "displayName": "Hafiz Rahman",
+    "country": "Bangladesh",
+    "role": "Spray finishing",
+    "wageSen": 224000,
+    "capSen": 290000,
+    "possessive": "his",
+    "family": {
+      "label": "Shirin",
+      "wallet": "bKash •••• 9020",
+      "city": "Sylhet"
+    }
+  },
+  {
+    "name": "w-8f3j7s",
+    "displayName": "Nur Aini",
+    "country": "Indonesia",
+    "role": "Quality check",
+    "wageSen": 182000,
+    "capSen": 250000,
+    "possessive": "her"
+  },
+  {
+    "name": "w-gt9maa",
+    "displayName": "Abdul Karim",
+    "country": "Bangladesh",
+    "role": "Sanding",
+    "wageSen": 175000,
+    "capSen": 240000
+  },
+  {
+    "name": "w-zfwk5s",
+    "displayName": "Mizanur Rahman",
+    "country": "Bangladesh",
+    "role": "Assembly",
+    "wageSen": 186000,
+    "capSen": 250000
+  },
+  {
+    "name": "w-8t8449",
+    "displayName": "Shafiqul Islam",
+    "country": "Bangladesh",
+    "role": "Upholstery",
+    "wageSen": 175000,
+    "capSen": 240000
+  },
+  {
+    "name": "w-2pbx77",
+    "displayName": "Jahangir Alam",
+    "country": "Bangladesh",
+    "role": "Packing",
+    "wageSen": 180000,
+    "capSen": 250000
+  },
+  {
+    "name": "w-mj57rn",
+    "displayName": "Nurul Huda",
+    "country": "Bangladesh",
+    "role": "Spray finishing",
+    "wageSen": 193000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-ysk99r",
+    "displayName": "Kamrul Hasan",
+    "country": "Bangladesh",
+    "role": "Quality check",
+    "wageSen": 207000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-3226sr",
+    "displayName": "Sohel Rana",
+    "country": "Bangladesh",
+    "role": "Cutting",
+    "wageSen": 210000,
+    "capSen": 280000
+  },
+  {
+    "name": "w-jwjge4",
+    "displayName": "Rubel Mia",
+    "country": "Bangladesh",
+    "role": "Edge banding",
+    "wageSen": 195000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-neviuc",
+    "displayName": "Faruk Hossain",
+    "country": "Bangladesh",
+    "role": "Loading",
+    "wageSen": 179000,
+    "capSen": 240000
+  },
+  {
+    "name": "w-7h7dej",
+    "displayName": "Alamgir Kabir",
+    "country": "Bangladesh",
+    "role": "Machine operator",
+    "wageSen": 188000,
+    "capSen": 250000
+  },
+  {
+    "name": "w-fm3sm2",
+    "displayName": "Monir Uddin",
+    "country": "Bangladesh",
+    "role": "Sanding",
+    "wageSen": 217000,
+    "capSen": 280000
+  },
+  {
+    "name": "w-h7ppxm",
+    "displayName": "Rafiq Ahmed",
+    "country": "Bangladesh",
+    "role": "Assembly",
+    "wageSen": 199000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-5bfc6g",
+    "displayName": "Selim Reza",
+    "country": "Bangladesh",
+    "role": "Upholstery",
+    "wageSen": 198000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-nnb38e",
+    "displayName": "Habib Ullah",
+    "country": "Bangladesh",
+    "role": "Packing",
+    "wageSen": 187000,
+    "capSen": 250000
+  },
+  {
+    "name": "w-7bpkf3",
+    "displayName": "Bikash Gurung",
+    "country": "Nepal",
+    "role": "Spray finishing",
+    "wageSen": 193000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-2vt454",
+    "displayName": "Ram Thapa",
+    "country": "Nepal",
+    "role": "Quality check",
+    "wageSen": 207000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-w7zvaz",
+    "displayName": "Suman Rai",
+    "country": "Nepal",
+    "role": "Cutting",
+    "wageSen": 179000,
+    "capSen": 240000
+  },
+  {
+    "name": "w-hyy34t",
+    "displayName": "Dipak Magar",
+    "country": "Nepal",
+    "role": "Edge banding",
+    "wageSen": 206000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-ryk3sh",
+    "displayName": "Kiran Shrestha",
+    "country": "Nepal",
+    "role": "Loading",
+    "wageSen": 192000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-wi8n6w",
+    "displayName": "Prakash Lama",
+    "country": "Nepal",
+    "role": "Machine operator",
+    "wageSen": 207000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-jti2it",
+    "displayName": "Hari Bhandari",
+    "country": "Nepal",
+    "role": "Sanding",
+    "wageSen": 200000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-3jfyeq",
+    "displayName": "Anil Tamang",
+    "country": "Nepal",
+    "role": "Assembly",
+    "wageSen": 206000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-biftam",
+    "displayName": "Budi Santoso",
+    "country": "Indonesia",
+    "role": "Upholstery",
+    "wageSen": 180000,
+    "capSen": 250000
+  },
+  {
+    "name": "w-gypmj8",
+    "displayName": "Eko Prasetyo",
+    "country": "Indonesia",
+    "role": "Packing",
+    "wageSen": 215000,
+    "capSen": 280000
+  },
+  {
+    "name": "w-uvg7kx",
+    "displayName": "Joko Susilo",
+    "country": "Indonesia",
+    "role": "Spray finishing",
+    "wageSen": 216000,
+    "capSen": 280000
+  },
+  {
+    "name": "w-k5fayu",
+    "displayName": "Dwi Hartono",
+    "country": "Indonesia",
+    "role": "Quality check",
+    "wageSen": 210000,
+    "capSen": 280000
+  },
+  {
+    "name": "w-iic5q2",
+    "displayName": "Rizky Pratama",
+    "country": "Indonesia",
+    "role": "Cutting",
+    "wageSen": 196000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-9ntraw",
+    "displayName": "Siti Rahayu",
+    "country": "Indonesia",
+    "role": "Edge banding",
+    "wageSen": 175000,
+    "capSen": 240000
+  },
+  {
+    "name": "w-ibbqms",
+    "displayName": "Wahyu Nugroho",
+    "country": "Indonesia",
+    "role": "Loading",
+    "wageSen": 203000,
+    "capSen": 270000
+  },
+  {
+    "name": "w-g6j4x6",
+    "displayName": "Aung Ko",
+    "country": "Myanmar",
+    "role": "Machine operator",
+    "wageSen": 195000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-cxnpu4",
+    "displayName": "Min Thu",
+    "country": "Myanmar",
+    "role": "Sanding",
+    "wageSen": 175000,
+    "capSen": 240000
+  },
+  {
+    "name": "w-nmuund",
+    "displayName": "Zaw Win",
+    "country": "Myanmar",
+    "role": "Assembly",
+    "wageSen": 186000,
+    "capSen": 250000
+  },
+  {
+    "name": "w-y8rtxf",
+    "displayName": "Htet Naing",
+    "country": "Myanmar",
+    "role": "Upholstery",
+    "wageSen": 191000,
+    "capSen": 260000
+  },
+  {
+    "name": "w-zv34vv",
+    "displayName": "Thant Zin",
+    "country": "Myanmar",
+    "role": "Packing",
+    "wageSen": 204000,
+    "capSen": 270000
+  }
+]

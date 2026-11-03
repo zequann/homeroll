@@ -1,0 +1,98 @@
+[
+  {
+    "number": "INV-2026-1043",
+    "buyer": "MegaHome Retail Sdn Bhd",
+    "amountSen": 15000000,
+    "issued": "2026-10-17",
+    "due": "2026-12-16",
+    "grade": "A",
+    "advanceBps": 8000,
+    "feeBps": 150,
+    "checks": [
+      {
+        "title": "e-Invoice record",
+        "detail": "Validated on MyInvois (mock). UUID and amount match.",
+        "result": "ok"
+      },
+      {
+        "title": "Purchase order and delivery",
+        "detail": "PO-88213 matched. Delivery order signed by the buyer on 16 Oct.",
+        "result": "ok"
+      },
+      {
+        "title": "Buyer payment history",
+        "detail": "41 of 41 invoices paid, average 58 days.",
+        "result": "ok"
+      },
+      {
+        "title": "Not financed before",
+        "detail": "Invoice hash is not in the on-chain registry.",
+        "result": "ok"
+      }
+    ]
+  },
+  {
+    "number": "INV-2026-1047",
+    "buyer": "Lim Brothers Trading",
+    "amountSen": 4200000,
+    "issued": "2026-10-18",
+    "due": "2026-12-17",
+    "grade": "C",
+    "advanceBps": 6000,
+    "feeBps": 280,
+    "checks": [
+      {
+        "title": "e-Invoice record",
+        "detail": "Validated on MyInvois (mock). UUID and amount match.",
+        "result": "ok"
+      },
+      {
+        "title": "Purchase order and delivery",
+        "detail": "PO-5521 matched. Delivery order signed.",
+        "result": "ok"
+      },
+      {
+        "title": "Buyer payment history",
+        "detail": "2 of the last 12 invoices were paid after 120+ days.",
+        "result": "warn"
+      },
+      {
+        "title": "Not financed before",
+        "detail": "Invoice hash is not in the on-chain registry.",
+        "result": "ok"
+      }
+    ]
+  },
+  {
+    "number": "INV-2026-1050",
+    "buyer": "Hotel Seri Pantai",
+    "amountSen": 3680000,
+    "issued": "2026-10-19",
+    "due": "2026-12-18",
+    "grade": "D",
+    "advanceBps": 0,
+    "feeBps": 0,
+    "checks": [
+      {
+        "title": "e-Invoice record",
+        "detail": "No MyInvois record for this invoice number.",
+        "result": "fail"
+      },
+      {
+        "title": "Purchase order and delivery",
+        "detail": "No signed delivery order uploaded.",
+        "result": "fail"
+      },
+      {
+        "title": "Buyer payment history",
+        "detail": "New buyer with no payment history.",
+        "result": "warn"
+      },
+      {
+        "title": "Not financed before",
+        "detail": "Invoice hash is not in the on-chain registry.",
+        "result": "ok"
+      }
+    ]
+  }
+]

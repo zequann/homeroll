@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "dev": "pnpm --filter web dev",
     "build:contracts": "contracts/build.sh",
     "test:contracts": "cargo test --manifest-path contracts/Cargo.toml --workspace --locked",
     "test": "pnpm -r --if-present test",

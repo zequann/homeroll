@@ -1,0 +1,10 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 var(--s-2);
+  border-radius: 6px;
+  background: var(--ink-5);
+  color: var(--ink-2);
+  white-space: nowrap;
+}

@@ -1,0 +1,17 @@
+.wrap {
+  display: inline-flex;
+}
+.label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.account {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+@media (max-width: 899px) {
+  .account {
+    display: none;
+  }
+}

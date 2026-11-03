@@ -1,0 +1,35 @@
+.track {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--ink-5);
+  max-width: 100%;
+  overflow-x: auto;
+}
+.item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--s-4);
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-weight: 500;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.item[aria-current="page"] {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+}
+.text {
+  position: relative;
+}

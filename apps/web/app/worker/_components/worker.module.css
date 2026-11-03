@@ -1,0 +1,190 @@
+/* Phone pinned from the top: a 390-wide column under the toolbar, running off the bottom. */
+.stage {
+  position: relative;
+  width: 390px;
+  margin: var(--s-5) auto 0;
+}
+.caption {
+  position: absolute;
+  top: var(--s-4);
+  right: calc(100% + var(--s-6));
+  width: 260px;
+  color: var(--ink-2);
+  display: none;
+}
+@media (min-width: 1024px) {
+  .caption {
+    display: block;
+  }
+}
+
+.column {
+  min-height: calc(100dvh - var(--toolbar-h) - var(--s-5));
+  padding: var(--s-5) var(--s-4) var(--s-6);
+  border-radius: var(--r-worker);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+/* Below 480px the app is the whole screen, square corners. */
+@media (max-width: 479px) {
+  .stage {
+    width: auto;
+    margin: 0 calc(var(--gutter) * -1);
+  }
+  .column {
+    border-radius: 0;
+    box-shadow: none;
+    min-height: calc(100dvh - var(--toolbar-h));
+  }
+}
+
+.balanceBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.balance {
+  font-size: 2.5rem;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+}
+.activity {
+  display: flex;
+  flex-direction: column;
+}
+.activityRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 0.5px solid var(--ink-5);
+}
+.plus {
+  color: var(--accent);
+  font-weight: 600;
+}
+.sectionLabel {
+  margin-top: var(--s-2);
+}
+.footer {
+  margin-top: auto;
+  padding-top: var(--s-4);
+}
+
+/* Send home */
+.back {
+  align-self: flex-start;
+  margin: calc(var(--s-2) * -1) calc(var(--s-3) * -1) 0;
+}
+.send {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.recipient {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-card);
+  background: var(--ground);
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 56px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-card);
+  background: var(--ground);
+  box-shadow: inset 0 0 0 0.5px rgb(16 24 22 / 0.12);
+}
+.field:focus-within {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.fieldPrefix {
+  color: var(--ink-3);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+.hint {
+  margin-top: var(--s-1);
+  color: var(--ink-2);
+  min-height: 1.35em;
+}
+.receives {
+  font-size: 2rem;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+.compare {
+  display: flex;
+  flex-direction: column;
+}
+.compareRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 0.5px solid var(--ink-5);
+}
+.compareRow[data-homeroll] {
+  font-weight: 600;
+}
+.compareWho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.compareTaka {
+  min-width: 64px;
+  text-align: right;
+}
+.error {
+  color: var(--danger);
+}
+
+/* Sent */
+.done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  align-items: flex-start;
+}
+.doneMark {
+  color: var(--accent);
+}
+.legs {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.leg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3) 0;
+  border-bottom: 0.5px solid var(--ink-5);
+}
+.legTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
