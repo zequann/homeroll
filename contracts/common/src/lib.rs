@@ -2,3 +2,4 @@
 //! Has no dependencies, so it adds nothing to contract wasm beyond what is used.
 
 pub mod errors;
+pub mod period;

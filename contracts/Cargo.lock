@@ -1453,6 +1453,7 @@ dependencies = [
 name = "homeroll-payroll"
 version = "0.1.0"
 dependencies = [
+ "homeroll-common",
  "near-sdk",
 ]
 

@@ -5,8 +5,9 @@
 use std::sync::{Arc, Mutex};
 
 use cargo_near_build::{BuildOpts, camino::Utf8PathBuf};
+use homeroll_common::period::Period;
 use near_api::types::transaction::result::TransactionResult;
-use near_api::{Account, AccountId, NearToken, NetworkConfig, PublicKey, Signer};
+use near_api::{Account, AccountId, Chain, NearToken, NetworkConfig, PublicKey, Signer};
 use near_sandbox::{
     Sandbox,
     config::{DEFAULT_GENESIS_ACCOUNT_PRIVATE_KEY, DEFAULT_GENESIS_ACCOUNT_PUBLIC_KEY},
@@ -178,6 +179,17 @@ impl Env {
             Err(error) if error.to_string().contains("UnknownAccount") => false,
             Err(error) => panic!("querying {account_id} failed: {error}"),
         }
+    }
+
+    /// The period containing the latest block. A call sent now lands in this month or the
+    /// next, and R14 keeps the previous month open.
+    ///
+    /// `timestamp_nanosec` is the locked field (`String` of nanoseconds). The legacy
+    /// `timestamp` number is the wrong field.
+    pub async fn open_period(&self) -> TestResult<String> {
+        let block = Chain::block().fetch_from(&self.network).await?;
+        let now_ns: u64 = block.header.timestamp_nanosec.parse()?;
+        Ok(Period::containing(now_ns).to_string())
     }
 
     pub async fn near_balance(&self, account_id: &AccountId) -> TestResult<NearToken> {
