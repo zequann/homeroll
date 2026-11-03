@@ -1,0 +1,19 @@
+[package]
+name = "homeroll-payroll"
+description = "Employer treasuries, payees with wage caps, payroll runs checked whole then paid (SPEC 7.3)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk.workspace = true
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
+
+[lints]
+workspace = true

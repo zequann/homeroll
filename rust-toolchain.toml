@@ -1,0 +1,5 @@
+# Same pin as the `cargo near new` template; near-sdk 5.29 needs Rust >= 1.93.
+[toolchain]
+channel = "1.93.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

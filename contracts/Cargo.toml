@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = ["common", "tusdc", "factory", "payroll", "pool", "tests"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+
+# Exact pins: CLAUDE.md asks for exact versions, recorded in README "Stack".
+[workspace.dependencies]
+homeroll-common = { path = "common" }
+near-sdk = "=5.29.1"
+near-contract-standards = "=5.29.1"
+# Integration tests only
+near-api = "=0.8.6"
+near-sandbox = "=0.3.16"
+cargo-near-build = "=0.11.5"
+tokio = { version = "=1.53.2", features = ["macros", "rt-multi-thread"] }
+testresult = "=0.4.2"
+serde_json = "=1.0.154"
+
+[workspace.lints.rust]
+# `cfg(near)` is set by near-sdk when building for the chain.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(near)"] }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+# Money code: overflow must panic, never wrap.
+overflow-checks = true

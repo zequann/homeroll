@@ -1,0 +1,10 @@
+[package]
+name = "homeroll-common"
+description = "Error codes shared by the Homeroll contracts and their tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
