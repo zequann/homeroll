@@ -6,7 +6,7 @@ import { addedWorkers, newWorkerAccountId } from "@/lib/added-workers";
 import { invoiceAgentDeps, invoiceResults } from "@/lib/agents";
 import {
   type InvoiceAgentResult,
-  invoiceDocument,
+  invoiceDocumentFromPdf,
   offerFor,
   runInvoiceAgent,
 } from "@/lib/agents/invoice-agent";
@@ -217,7 +217,7 @@ export type CheckResult =
 
 /**
  * Owner uploads an invoice: the invoice agent extracts, checks, grades and attests it (SPEC §8.1).
- * In this build the "upload" is the demo company's own generated document.
+ * In this build the "upload" is the demo company's own generated PDF, read through its text layer.
  */
 export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult> {
   const invoice = fixtureInvoice(invoiceNumber);
@@ -225,7 +225,7 @@ export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult>
   if (!session.connected) return { ok: false, reason: "not-connected" };
 
   const deps = invoiceAgentDeps();
-  const result = await runInvoiceAgent(deps, invoiceDocument(deps.fixtures, invoice));
+  const result = await runInvoiceAgent(deps, await invoiceDocumentFromPdf(deps.fixtures, invoice));
   // Keep the first successful check: a re-run that the registry refuses must not hide it
   if (result.attest.ok || !invoiceResults().has(invoice.number)) {
     invoiceResults().set(invoice.number, result);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { invoiceAgentDeps, invoiceResults } from "@/lib/agents";
-import { invoiceDocument, runInvoiceAgent } from "@/lib/agents/invoice-agent";
+import { invoiceDocumentFromPdf, runInvoiceAgent } from "@/lib/agents/invoice-agent";
 import { requireSigner } from "@/lib/session";
 
 const bodySchema = z
@@ -19,7 +19,9 @@ export async function POST(request: Request): Promise<Response> {
   const invoice = deps.fixtures.invoices.find((i) => i.number === body.data.invoiceNumber);
   if (!invoice) return Response.json({ reason: "unknown_invoice" }, { status: 404 });
 
-  const document = invoiceDocument(deps.fixtures, invoice, { tampered: body.data.tampered });
+  const document = await invoiceDocumentFromPdf(deps.fixtures, invoice, {
+    tampered: body.data.tampered,
+  });
   const result = await runInvoiceAgent(deps, document);
   if (result.attest.ok || !invoiceResults().has(invoice.number)) {
     invoiceResults().set(invoice.number, result);
