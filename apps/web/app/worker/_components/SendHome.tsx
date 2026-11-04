@@ -120,7 +120,9 @@ export function SendHome({
                 setError(
                   result.reason === "too-much"
                     ? "That is more than your balance."
-                    : "Connect Rahim's wallet to send.",
+                    : result.reason === "relayer"
+                      ? `Not sent. ${result.message} Nothing left your account.`
+                      : "Connect Rahim's wallet to send.",
                 );
               }
             })

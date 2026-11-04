@@ -1,6 +1,6 @@
 import type { AccountId } from "@homeroll/shared";
 import { feeSen, type Sen, sen, senToTaka, senToUnits } from "@/lib/fx";
-import type { ChainClient, Signer } from "@/lib/near/client";
+import type { MockLedger, MockReceipt } from "@/lib/mock/ledger";
 
 /**
  * Send home (SPEC §8.4). Every number here is a sample: no Intents call is made and no quote is
@@ -62,25 +62,41 @@ export function benchmarkTaka(amountSen: Sen, bps: number): number {
 export interface RemitReceipt {
   mock: true;
   txHash: string;
+  ref: string;
   takaOut: number;
   quote: RemitQuote;
 }
 
+/** The token transfer to payout.<root>: in P0 a worker delegate action through the relayer. */
+export type Transfer = (to: AccountId, amount: bigint, memo: string) => Promise<{ txHash: string }>;
+
 /** Mock partner: moves the tokens to payout.<root>; the BDT receipt is made up. */
 export const MockRoute = {
   async execute(
-    chain: ChainClient,
-    signer: Signer,
+    transfer: Transfer,
     payoutAccount: AccountId,
     quote: RemitQuote,
+    ledger: MockLedger,
+    maskedWallet: string,
   ): Promise<RemitReceipt> {
-    const result = await chain.ftTransfer(
-      signer,
+    const { txHash } = await transfer(
       payoutAccount,
       senToUnits(quote.amountSen),
       `send-home:${quote.corridor}`,
     );
-    if (!result.ok) throw new Error("Mock payout transfer was rejected");
-    return { mock: true, txHash: result.txHash, takaOut: quote.takaOut, quote };
+    const receipt = ledger.record<Extract<MockReceipt, { kind: "payout" }>>(
+      {
+        mock: true,
+        kind: "payout",
+        partner: "Mock partner · bKash payout",
+        txHash,
+        amountSen: quote.amountSen,
+        takaOut: quote.takaOut,
+        maskedWallet,
+        at: Date.now(),
+      },
+      "BKASH",
+    );
+    return { mock: true, txHash, ref: receipt.ref, takaOut: quote.takaOut, quote };
   },
 };

@@ -12,14 +12,15 @@ export const metadata = { title: "Sent · Homeroll" };
 export default async function SentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ rm?: string }>;
+  searchParams: Promise<{ rm?: string; ref?: string }>;
 }) {
-  const parsed = z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(100_000_000)
-    .safeParse((await searchParams).rm);
+  const params = await searchParams;
+  const parsed = z.coerce.number().int().positive().max(100_000_000).safeParse(params.rm);
+  // Only a mock ledger reference is shown back; anything else in the URL is dropped
+  const ref = z
+    .string()
+    .regex(/^[A-Z]+-SYN-\d{6}$/)
+    .safeParse(params.ref).data;
   if (!parsed.success) redirect("/worker");
   const quote = SampleQuote.quote(sen(parsed.data));
 
@@ -34,6 +35,7 @@ export default async function SentPage({
             </h1>
             <p className={styles.receives}>{formatTaka(quote.takaOut)}</p>
             <p className="t-caption ink-3">From {formatRm(quote.amountSen, { decimals: 2 })}</p>
+            {ref ? <p className="t-caption ink-3 t-mono">Receipt {ref}</p> : null}
           </div>
           <div className={styles.legs}>
             <div className={styles.leg}>
