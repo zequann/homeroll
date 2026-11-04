@@ -113,6 +113,14 @@ export type WasmBundle = {
 };
 
 export const CONTRACT_ORDER = ["tusdc", "factory", "payroll", "pool"] as const;
+
+/** cargo-near names the output after the package, `homeroll-tusdc` → `homeroll_tusdc`. */
+const CARGO_NEAR_DIR = {
+  tusdc: "homeroll_tusdc",
+  factory: "homeroll_factory",
+  payroll: "homeroll_payroll",
+  pool: "homeroll_pool",
+} as const;
 export type ContractName = (typeof CONTRACT_ORDER)[number];
 
 const CONTRACT_FLOOR_YOCTO = 10n * 10n ** 24n;
@@ -201,27 +209,44 @@ function plainAccountSteps(
   snapshot: AccountSnapshot,
   publicKey: string,
   floorYocto: bigint,
-): DeployStep[] {
+  requireKey: boolean,
+): { steps: DeployStep[]; refusal?: ClobberRefusal } {
   if (snapshot.kind === "absent") {
-    return [
-      deployStep({
-        kind: "createPlain",
+    return {
+      steps: [
+        deployStep({
+          kind: "createPlain",
+          account: accountId,
+          publicKey,
+          fundYocto: floorYocto,
+        }),
+      ],
+    };
+  }
+  // The relayer signs the outer transaction. A different full-access key cannot.
+  if (requireKey && !snapshot.fullAccessKeys.includes(publicKey)) {
+    return {
+      steps: [],
+      refusal: {
         account: accountId,
-        publicKey,
-        fundYocto: floorYocto,
-      }),
-    ];
+        reason: "foreign_key",
+        observedCodeHash: null,
+        expectedCodeHash: null,
+      },
+    };
   }
   if (snapshot.balanceYocto < floorYocto) {
-    return [
-      deployStep({
-        kind: "topUp",
-        account: accountId,
-        fundYocto: floorYocto - snapshot.balanceYocto,
-      }),
-    ];
+    return {
+      steps: [
+        deployStep({
+          kind: "topUp",
+          account: accountId,
+          fundYocto: floorYocto - snapshot.balanceYocto,
+        }),
+      ],
+    };
   }
-  return [];
+  return { steps: [] };
 }
 
 export function reconcile(
@@ -256,30 +281,33 @@ export function reconcile(
     if (result.step) steps.push(result.step);
   }
 
-  steps.push(
-    ...plainAccountSteps(
-      goals.accounts.relayer,
-      snapshot.relayer,
-      goals.relayerPublicKey,
-      RELAYER_FLOOR_YOCTO,
-    ),
+  const relayer = plainAccountSteps(
+    goals.accounts.relayer,
+    snapshot.relayer,
+    goals.relayerPublicKey,
+    RELAYER_FLOOR_YOCTO,
+    true,
   );
-  steps.push(
-    ...plainAccountSteps(
+  if (relayer.refusal) return { ok: false, refusal: relayer.refusal };
+  steps.push(...relayer.steps);
+  for (const plain of [
+    plainAccountSteps(
       goals.accounts.payout,
       snapshot.payout,
       goals.payoutPublicKey,
       RECEIVER_FLOOR_YOCTO,
+      false,
     ),
-  );
-  steps.push(
-    ...plainAccountSteps(
+    plainAccountSteps(
       goals.accounts.offramp,
       snapshot.offramp,
       goals.offrampPublicKey,
       RECEIVER_FLOOR_YOCTO,
+      false,
     ),
-  );
+  ]) {
+    steps.push(...plain.steps);
+  }
 
   if (!snapshot.payoutRegistered) {
     steps.push(
@@ -316,11 +344,15 @@ export function rootCanPay(snapshot: ChainSnapshot, steps: readonly DeployStep[]
   return snapshot.rootBalanceYocto >= need;
 }
 
+export function contractWasmPath(name: ContractName): string {
+  const dir = CARGO_NEAR_DIR[name];
+  return join("contracts/target/near", dir, `${dir}.wasm`);
+}
+
 function readWasmBundle(): WasmBundle | null {
   const read = (crate: ContractName) => {
-    const path = join(REPO_ROOT, "contracts/target/near", crate, `${crate}.wasm`);
     try {
-      return readFileSync(path);
+      return readFileSync(join(REPO_ROOT, contractWasmPath(crate)));
     } catch {
       return null;
     }

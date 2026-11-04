@@ -247,6 +247,26 @@ describe("relay policy", () => {
     await refuse("rate_limit", { raw });
   });
 
+  it("does not submit a held blob twice while the first submit is still running", async () => {
+    let releaseSubmit: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    submit.mockImplementation(async () => {
+      await gate;
+      return { txHash: "once" };
+    });
+    const raw = new Uint8Array([77, 78]);
+    const body = register({ raw });
+    const first = relay(body, deps);
+    const second = relay(body, deps);
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await expect(second).resolves.toEqual({ status: 503, body: { reason: "in_flight" } });
+    releaseSubmit();
+    await expect(first).resolves.toEqual({ status: 200, body: { txHash: "once" } });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts a valid delegate and submits the original bytes", async () => {
     const raw = new Uint8Array([42, 43, 44]);
     const body = register({ raw });

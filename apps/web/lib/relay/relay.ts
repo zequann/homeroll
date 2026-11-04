@@ -264,7 +264,13 @@ export async function relay(signedDelegateBase64: string, deps: RelayDeps): Prom
       return;
     }
     if (existing?.phase === "held") {
-      flow.next = deps.exposure.inFlight.has(id) ? "in_flight" : "recover";
+      if (deps.exposure.inFlight.has(id)) {
+        flow.next = "in_flight";
+        return;
+      }
+      // Claim the blob before this lock releases. Otherwise a second request resubmits it.
+      deps.exposure.inFlight.add(id);
+      flow.next = "recover";
       return;
     }
 
@@ -286,6 +292,7 @@ export async function relay(signedDelegateBase64: string, deps: RelayDeps): Prom
       return;
     }
     book.hold({ blob: id, day, amount: ft.amount, maxBlockHeight: delegate.maxBlockHeight });
+    deps.exposure.inFlight.add(id);
     flow.next = "submit";
   });
 
@@ -295,7 +302,6 @@ export async function relay(signedDelegateBase64: string, deps: RelayDeps): Prom
   if (flow.next === "reject" && flow.rejectRule)
     return { status: 403, body: { rule: flow.rejectRule } };
 
-  deps.exposure.inFlight.add(id);
   try {
     const { txHash } = await deps.submit(payable(raw), deps.relayer);
     await deps.exposure.withWorker(delegate.senderId, (book) => book.land(id, txHash));

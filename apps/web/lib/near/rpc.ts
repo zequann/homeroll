@@ -103,7 +103,12 @@ export function decodeSignedDelegate(bytes: Uint8Array): DecodeResult {
     const { delegateAction, signature } = signed;
     const payload = encodeDelegateAction(delegateAction);
     const hash = createHash("sha256").update(payload).digest();
-    const signatureOk = delegateAction.publicKey.verify(hash, signature.data);
+    // borsh returns plain enums. PublicKey.from restores verify().
+    const publicKey = PublicKey.from(delegateAction.publicKey);
+    const rawSignature =
+      signature.ed25519Signature?.data ?? (signature as { data?: Uint8Array }).data;
+    if (!rawSignature) return { ok: false, reason: "malformed" };
+    const signatureOk = publicKey.verify(hash, Uint8Array.from(rawSignature));
     return {
       ok: true,
       delegate: {
@@ -113,7 +118,7 @@ export function decodeSignedDelegate(bytes: Uint8Array): DecodeResult {
         actions: mapActions(delegateAction.actions),
         nonce: delegateAction.nonce,
         maxBlockHeight: delegateAction.maxBlockHeight,
-        publicKey: delegateAction.publicKey.toString(),
+        publicKey: publicKey.toString(),
         raw: bytes,
       },
     };

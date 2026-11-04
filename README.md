@@ -27,6 +27,7 @@ Exact versions, pinned where each is declared.
 | Phosphor Icons (`@phosphor-icons/react`) | 2.1.10 | `apps/web/package.json` |
 | `@types/react`, `@types/react-dom` | 19.3.0 | `apps/web/package.json` |
 | `near-api-js` | 7.4.0 | `apps/web/package.json` |
+| `borsh` | 2.0.0 | `apps/web/package.json` |
 
 ## Try it
 

@@ -5,6 +5,7 @@ import { wasmCodeHash } from "../near/rpc";
 import {
   adminStep,
   type ChainSnapshot,
+  contractWasmPath,
   readDeployEnv,
   reconcile,
   rootCanPay,
@@ -111,7 +112,7 @@ describe("reconcile", () => {
       kind: "present",
       codeHash: null,
       balanceYocto: 5n * 10n ** 24n,
-      fullAccessKeys: [],
+      fullAccessKeys: [RELAYER_PK],
     };
     snap.payout = { kind: "present", codeHash: null, balanceYocto: 10n ** 24n, fullAccessKeys: [] };
     snap.offramp = {
@@ -146,6 +147,64 @@ describe("reconcile", () => {
         observedCodeHash: "deadbeef",
         expectedCodeHash: hashes.tusdc,
       },
+    });
+  });
+
+  it("reads wasm from the cargo-near package directory", () => {
+    expect(contractWasmPath("tusdc")).toBe(
+      "contracts/target/near/homeroll_tusdc/homeroll_tusdc.wasm",
+    );
+    expect(contractWasmPath("factory")).toBe(
+      "contracts/target/near/homeroll_factory/homeroll_factory.wasm",
+    );
+    expect(contractWasmPath("payroll")).toBe(
+      "contracts/target/near/homeroll_payroll/homeroll_payroll.wasm",
+    );
+    expect(contractWasmPath("pool")).toBe("contracts/target/near/homeroll_pool/homeroll_pool.wasm");
+  });
+
+  it("refuses a relayer account that does not hold our key", () => {
+    const snap = emptySnapshot();
+    snap.tusdc = {
+      kind: "present",
+      codeHash: hashes.tusdc,
+      balanceYocto: 10n * 10n ** 24n,
+      fullAccessKeys: [ADMIN_PK],
+    };
+    snap.root = {
+      kind: "present",
+      codeHash: hashes.factory,
+      balanceYocto: 10n * 10n ** 24n,
+      fullAccessKeys: [ADMIN_PK],
+    };
+    snap.payroll = {
+      kind: "present",
+      codeHash: hashes.payroll,
+      balanceYocto: 10n * 10n ** 24n,
+      fullAccessKeys: [ADMIN_PK],
+    };
+    snap.pool = {
+      kind: "present",
+      codeHash: hashes.pool,
+      balanceYocto: 10n * 10n ** 24n,
+      fullAccessKeys: [ADMIN_PK],
+    };
+    snap.relayer = {
+      kind: "present",
+      codeHash: null,
+      balanceYocto: 5n * 10n ** 24n,
+      fullAccessKeys: ["ed25519:someoneelse"],
+    };
+    snap.payoutRegistered = true;
+    snap.offrampRegistered = true;
+    const plan = reconcile(snap, goals);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.refusal).toEqual({
+      account: accounts.relayer,
+      reason: "foreign_key",
+      observedCodeHash: null,
+      expectedCodeHash: null,
     });
   });
 
