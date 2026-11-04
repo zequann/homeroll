@@ -39,10 +39,10 @@ const MAX_PAYEES_PER_EMPLOYER = 40;
 /** R3: the 48-hour hold. */
 const HOLD_NS = 48n * 60n * 60n * 1_000_000_000n;
 /**
- * Pool's per-buyer limit (R11). The contract starts at 0 and the admin sets it, so this stands in
- * for what seed must set: at least the RM120,000 advance on INV-2026-1043.
+ * Pool's per-buyer limit (R11, SPEC §7.4): RM120,000, the value set on testnet. It exactly covers
+ * the advance on INV-2026-1043, and the same buyer cannot go a sen higher.
  */
-const MAX_BUYER_EXPOSURE = senToUnits(sen(20_000_000));
+const MAX_BUYER_EXPOSURE = senToUnits(sen(12_000_000));
 
 type Grade = InvoiceView["grade"];
 
