@@ -149,7 +149,7 @@ const EXPLANATIONS = {
   ERR_NOT_SETTLER: e("R10", plain("Only the bank can settle an invoice.")),
   ERR_INVOICE_ALREADY_REGISTERED: e(
     "R7",
-    plain("This invoice already has its advance. One invoice gets one advance."),
+    plain("This invoice is already registered. One invoice gets one advance."),
   ),
   ERR_ADVANCE_ABOVE_CAP: e(
     "R8",

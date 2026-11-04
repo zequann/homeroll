@@ -10,6 +10,7 @@ import { checkAccessKey, type TxShape } from "@/lib/near/access-key";
 import { period } from "@/lib/near/client";
 import { failureText } from "@/lib/near/failure";
 import { toPayLines } from "@/lib/payroll";
+import { maxAdvanceBps } from "@/lib/pool-grades";
 import { payrollAgentSigner } from "@/lib/session";
 
 /**
@@ -151,7 +152,9 @@ async function hiddenPrompt(): Promise<AttackResult> {
   if (full.ok) throw new Error("Attack 04 was expected to fail at request_advance");
 
   const failures = [await describeFailure(chain, fixtures.company.accountId, full.failure)];
-  if (!result.attest.ok) failures.unshift(result.attest.failure);
+  // The pool's grade, not this run's: a re-upload fails the registry check, which is not the point here.
+  const onPool = await chain.getInvoice(invoice.hash);
+  const grade = onPool?.grade ?? result.grade;
   return {
     id: "04",
     proposed: `Model: "buyer is ${result.model.suggestedGrade ?? "?"}", advance ${result.model.suggestedAdvancePercent ?? "?"}% of ${formatRm(sen(invoice.amountSen))}.`,
@@ -159,7 +162,7 @@ async function hiddenPrompt(): Promise<AttackResult> {
     failures,
     notes: [
       result.model.ignored ?? "",
-      `Graded ${result.grade} by the rules. Max advance for ${result.grade}: 80%.`,
+      `The pool holds Grade ${grade}. Max advance for ${grade}: ${maxAdvanceBps(grade) / 100}%.`,
       result.model.droppedFields.length
         ? `Dropped unknown model fields: ${result.model.droppedFields.join(", ")}.`
         : "",

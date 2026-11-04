@@ -47,6 +47,13 @@ describe("the five attacks (SPEC §11), through the code the lab runs", () => {
     expect(notes.join(" ")).toContain("Not a grade");
   });
 
+  it("04 reads the pool's grade when it runs after 03 uploaded the same invoice", async () => {
+    await runAttack("03");
+    const { failures, notes } = await runAttack("04");
+    expect(failures.map((f) => f.code)).toEqual(["ERR_ADVANCE_ABOVE_CAP"]);
+    expect(notes.join(" ")).toContain("The pool holds Grade A. Max advance for A: 80%.");
+  });
+
   it("05 shows the three protocol errors in order, labelled as simulated", async () => {
     const { failures, simulated, stoppedBy } = await runAttack("05");
     expect(failures.map((f) => f.code)).toEqual([
