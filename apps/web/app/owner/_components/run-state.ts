@@ -9,7 +9,7 @@ export type RunState =
   | { kind: "checking" }
   /** `inFlight` is a pay_run call this browser is making now; otherwise a run was left half paid. */
   | { kind: "paying"; paid: number; total: number; runId: number; inFlight: boolean }
-  | { kind: "done"; total: Sen; lineCount: number }
+  | { kind: "done"; total: Sen; lineCount: number; missed?: number }
   | { kind: "rejected"; failure: FailureNote; shortfall?: Sen }
   | { kind: "nothingToRun"; period: string };
 
@@ -25,7 +25,9 @@ export interface RunFacts {
   /** A submitted run that still has Reserved lines. */
   pendingRun: { runId: number; paid: number; total: number } | null;
   /** A submitted run with no Reserved line left. */
-  doneRun: { total: Sen; lineCount: number } | null;
+  doneRun: { total: Sen; lineCount: number; missed?: number } | null;
+  /** The whole period, for the label under the button. Defaults to `totalSen`. */
+  periodTotalSen?: Sen;
 }
 
 /** What the browser is doing right now, on top of the server facts. */

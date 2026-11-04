@@ -1,11 +1,13 @@
 import { homerollAccounts } from "@homeroll/shared";
 import type { RunFacts } from "@/app/owner/_components/run-state";
 import { getActivityLog } from "@/lib/activity";
+import { addedWorkers } from "@/lib/added-workers";
 import { invoiceResults } from "@/lib/agents";
 import { type AdvanceOffer, type InvoiceAgentResult, offerFor } from "@/lib/agents/invoice-agent";
+import { proposePayroll } from "@/lib/agents/payroll";
 import { getEnv } from "@/lib/env";
 import { truncateMiddle } from "@/lib/format";
-import { formatUsdc, type Sen, sen, senToUnits, units, unitsToSen } from "@/lib/fx";
+import { formatUsdc, type Sen, sen, units, unitsToSen } from "@/lib/fx";
 import { nameOrAccount } from "@/lib/names";
 import { getChainClient, getFixtures } from "@/lib/near";
 import type { AccessKeyView, Grade, LineStatus } from "@/lib/near/client";
@@ -18,7 +20,9 @@ export type PayLineStatus =
   | "Paid"
   | "Skipped"
   | "Failed"
-  | "Cancelled";
+  | "Cancelled"
+  | "On hold"
+  | "Removed";
 
 export interface PayLineRow {
   accountId: string;
@@ -27,6 +31,18 @@ export interface PayLineRow {
   netSen: Sen;
   capSen: Sen;
   status: PayLineStatus;
+  /** A failed, skipped or cancelled line that can be paid in a new one-line run (SPEC §7.3). */
+  missed?: boolean;
+}
+
+export interface PayeeRow {
+  accountId: string;
+  name: string;
+  role: string;
+  capSen: Sen;
+  status: "Active" | "On hold" | "Removed";
+  /** Milliseconds since the epoch when the 48-hour hold ends. */
+  activeFromMs: number | null;
 }
 
 export interface InvoiceRow {
@@ -78,6 +94,8 @@ export interface OwnerView {
   bufferSen: Sen;
   facts: RunFacts;
   payLines: PayLineRow[];
+  payees: PayeeRow[];
+  onboarding: boolean;
   invoices: InvoiceRow[];
   keys: KeyRow[];
   activity: ActivityRow[];
@@ -121,33 +139,72 @@ export async function loadOwnerView(): Promise<OwnerView> {
   for (const run of runs ?? [])
     for (const l of run.lines) statusByAccount.set(l.accountId, l.status);
 
+  const nowMs = Date.now();
+  const [proposal, payeeViews] = await Promise.all([
+    proposePayroll(chain, fixtures, payrollPeriod, nowMs),
+    chain.getPayees(employer),
+  ]);
+  const excluded = new Map(proposal.excluded.map((e) => [e.accountId, e.reason]));
+
   const payLines: PayLineRow[] = fixtures.workers.map((w, i) => {
     const line = fixtures.timesheet[i];
-    const status = statusByAccount.get(w.accountId);
+    const lineStatus = statusByAccount.get(w.accountId);
+    const reason = excluded.get(w.accountId);
+    const unpaid =
+      lineStatus === "Failed" || lineStatus === "Skipped" || lineStatus === "Cancelled";
+    const status: PayLineStatus =
+      reason === "not-a-payee"
+        ? "Removed"
+        : reason === "on-hold"
+          ? "On hold"
+          : lineStatus
+            ? STATUS_WORD[lineStatus]
+            : "Ready";
     return {
       accountId: w.accountId,
       name: nameOrAccount(w.accountId),
       role: w.role,
       netSen: sen(line?.amountSen ?? 0),
       capSen: sen(w.capSen),
-      status: status ? STATUS_WORD[status] : "Ready",
+      status,
+      missed: unpaid && reason !== "not-a-payee",
     };
   });
 
-  const totalUnits = fixtures.timesheet.reduce((s, l) => s + senToUnits(sen(l.amountSen)), 0n);
-  const held = [...statusByAccount.values()].filter(
-    (s) => s === "Reserved" || s === "Sent" || s === "Paid",
-  ).length;
+  const payeeBy = new Map(payeeViews.map((p) => [p.accountId, p]));
+  const nowNs = BigInt(nowMs) * 1_000_000n;
+  const toPayeeRow = (accountId: string, role: string, capSen: Sen): PayeeRow => {
+    const onChain = payeeBy.get(accountId);
+    const onHold = onChain !== undefined && nowNs < onChain.activeFrom;
+    return {
+      accountId,
+      name: nameOrAccount(accountId),
+      role,
+      capSen: onChain ? unitsToSen(onChain.cap, "nearest") : capSen,
+      status: !onChain ? "Removed" : onHold ? "On hold" : "Active",
+      activeFromMs: onHold ? Number(onChain.activeFrom / 1_000_000n) : null,
+    };
+  };
+  const payees: PayeeRow[] = [
+    ...[...addedWorkers().values()].map((w) => toPayeeRow(w.accountId, w.role, w.capSen)),
+    ...fixtures.workers.map((w) => toPayeeRow(w.accountId, w.role, sen(w.capSen))),
+  ];
+
   const pending = runs?.find((r) => r.status === "Pending");
-  const done = runs?.find((r) => r.status === "Done");
+  const doneRuns = runs?.filter((r) => r.status === "Done") ?? [];
+  const paidLines = (runs ?? []).flatMap((r) => r.lines).filter((l) => l.status === "Paid");
+  const missedCount = [...statusByAccount.values()].filter(
+    (l) => l === "Failed" || l === "Skipped" || l === "Cancelled",
+  ).length;
 
   const facts: RunFacts = {
     period: fixtures.company.period,
-    lineCount: fixtures.timesheet.length,
-    totalSen: unitsToSen(units(totalUnits), "nearest"),
+    lineCount: proposal.lines.length + proposal.held.length,
+    totalSen: proposal.remainingSen,
+    periodTotalSen: sen(proposal.remainingSen + proposal.heldSen),
     treasurySen: unitsToSen(employerView.treasury, "nearest"),
     bufferSen: unitsToSen(employerView.buffer, "nearest"),
-    heldCount: held,
+    heldCount: proposal.held.length,
     pendingRun: pending
       ? {
           runId: pending.runId,
@@ -155,12 +212,15 @@ export async function loadOwnerView(): Promise<OwnerView> {
           total: pending.lines.length,
         }
       : null,
-    doneRun: done
-      ? {
-          total: unitsToSen(units(done.lines.reduce((s, l) => s + l.amount, 0n)), "nearest"),
-          lineCount: done.lines.length,
-        }
-      : null,
+    // Done only when nothing is left to propose. A missed worker past their hold shows Run payroll.
+    doneRun:
+      doneRuns.length > 0 && proposal.lines.length === 0 && !pending
+        ? {
+            total: unitsToSen(units(paidLines.reduce((s, l) => s + l.amount, 0n)), "nearest"),
+            lineCount: paidLines.length,
+            missed: missedCount,
+          }
+        : null,
   };
 
   const results = invoiceResults();
@@ -191,6 +251,8 @@ export async function loadOwnerView(): Promise<OwnerView> {
     bufferSen: facts.bufferSen,
     facts,
     payLines,
+    payees,
+    onboarding: employerView.onboarding,
     invoices,
     keys: [...agentKeysFor(ownerKeys), ...agentKeysFor(agentKeys)],
     activity: getActivityLog()

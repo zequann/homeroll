@@ -1,3 +1,4 @@
+import { addedWorkers } from "@/lib/added-workers";
 import { invoiceResults } from "@/lib/agents";
 import { getMockLedger } from "@/lib/mock/ledger";
 import { getChainClient } from "@/lib/near";
@@ -10,6 +11,7 @@ import { resetFakeRelay } from "@/lib/worker-transfer";
 export async function resetDemoEverywhere(): Promise<{ employer: string }> {
   const result = await getChainClient().resetDemo();
   invoiceResults().clear();
+  addedWorkers().clear();
   getMockLedger().clear();
   resetFakeRelay();
   return result;
