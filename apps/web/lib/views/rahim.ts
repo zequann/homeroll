@@ -1,4 +1,6 @@
+import { homerollAccounts } from "@homeroll/shared";
 import { getActivityLog } from "@/lib/activity";
+import { getEnv } from "@/lib/env";
 import { formatUsdc, type Sen, units, unitsToSen } from "@/lib/fx";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { type Period, period } from "@/lib/near/client";
@@ -22,6 +24,7 @@ export async function loadRahimView(): Promise<RahimView> {
   const rahim = fixtures.workers[0];
   if (!rahim) throw new Error("fixtures have no workers");
   const payrollPeriod: Period = period(fixtures.company.period);
+  const { offramp } = homerollAccounts(getEnv().root);
 
   const [balance, runs] = await Promise.all([
     chain.ftBalanceOf(rahim.accountId),
@@ -41,7 +44,7 @@ export async function loadRahimView(): Promise<RahimView> {
       .filter((a) => a.method === "ft_transfer" && a.from === rahim.accountId && !a.failure)
       .map((a) => ({
         id: a.id,
-        label: "Sent to Amma",
+        label: a.to === offramp ? "Cash out · DuitNow" : "Sent to Amma",
         amountSen: unitsToSen(units(a.amount ?? 0n), "nearest"),
       })),
   };

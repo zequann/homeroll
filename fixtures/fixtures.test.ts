@@ -50,10 +50,16 @@ describe("fixtures", () => {
   });
 
   it("has the three invoices from SPEC §4", () => {
-    expect(f.invoices.map((i) => [i.number, i.grade, i.amountSen])).toEqual([
+    expect(f.invoices.map((i) => [i.number, i.expectedGrade, i.amountSen])).toEqual([
       ["INV-2026-1043", "A", 15_000_000],
       ["INV-2026-1047", "C", 4_200_000],
       ["INV-2026-1050", "D", 3_680_000],
     ]);
+  });
+
+  it("gives every invoice a distinct registry hash", () => {
+    const hashes = new Set(f.invoices.map((i) => i.hash));
+    expect(hashes.size).toBe(3);
+    for (const h of hashes) expect(h).toMatch(/^[0-9a-f]{64}$/);
   });
 });

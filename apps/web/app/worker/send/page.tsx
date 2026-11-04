@@ -1,5 +1,6 @@
 import { CaretLeft } from "@phosphor-icons/react/ssr";
 import { ButtonLink } from "@/components/Button";
+import { getEnv } from "@/lib/env";
 import { getFixtures } from "@/lib/near";
 import { readSession } from "@/lib/session";
 import { loadRahimView } from "@/lib/views/rahim";
@@ -29,6 +30,7 @@ export default async function SendHomePage() {
             balanceSen={rahim.balanceSen}
             connected={session?.key === "worker:w-7k2q9x"}
             recipient={family}
+            liveQuotes={getEnv().intentsQuotes === "live"}
           />
         </section>
       </div>

@@ -2,6 +2,7 @@ import { CheckCircle, Clock, XCircle } from "@phosphor-icons/react/ssr";
 import { Money } from "@/components/Money";
 import type { PayLineRow, PayLineStatus } from "@/lib/views/owner";
 import styles from "./owner.module.css";
+import { PayMissed } from "./PayMissed";
 
 function StatusCell({ status }: { status: PayLineStatus }) {
   switch (status) {
@@ -33,7 +34,15 @@ function StatusCell({ status }: { status: PayLineStatus }) {
 }
 
 /** One table, one row per pay line. Names come from Homeroll's own records; the chain sees only the account. */
-export function PayLines({ rows, caption = true }: { rows: PayLineRow[]; caption?: boolean }) {
+export function PayLines({
+  rows,
+  caption = true,
+  connected = false,
+}: {
+  rows: PayLineRow[];
+  caption?: boolean;
+  connected?: boolean;
+}) {
   return (
     <div>
       <div className={styles.tableWrap}>
@@ -67,6 +76,9 @@ export function PayLines({ rows, caption = true }: { rows: PayLineRow[]; caption
                 </td>
                 <td>
                   <StatusCell status={row.status} />
+                  {row.missed ? (
+                    <PayMissed accountId={row.accountId} connected={connected} />
+                  ) : null}
                 </td>
               </tr>
             ))}

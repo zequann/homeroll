@@ -9,7 +9,7 @@ import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
 import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, type Sen } from "@/lib/fx";
-import { payNextBatch, submitPayroll } from "../actions";
+import { cancelPayroll, payNextBatch, submitPayroll } from "../actions";
 import styles from "./owner.module.css";
 import {
   buttonEnabled,
@@ -96,7 +96,38 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     });
   };
 
+  /** Reserves the run without paying, so the owner can still cancel it or change the payee list. */
+  const reserveOnly = () => {
+    setLocal({ checking: true, paying: null, rejection: null });
+    start(async () => {
+      const submitted = await submitPayroll();
+      setLocal(
+        submitted.ok || submitted.reason === "not-connected"
+          ? IDLE
+          : {
+              ...IDLE,
+              rejection: {
+                failure: submitted.failure,
+                shortfall: submitted.failure.shortfallSen ?? undefined,
+                atTreasury: treasurySen,
+              },
+            },
+      );
+    });
+  };
+
+  const cancel = (runId: number) =>
+    start(async () => {
+      const result = await cancelPayroll(runId);
+      setLocal(
+        result.ok || result.reason === "not-connected"
+          ? IDLE
+          : { ...IDLE, rejection: { failure: result.failure, atTreasury: treasurySen } },
+      );
+    });
+
   const canAct = state.kind !== "done" && state.kind !== "nothingToRun";
+  const canReserve = connected && state.kind === "ready" && !pending;
 
   return (
     <div className={styles.hero}>
@@ -119,6 +150,16 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               {buttonLabel(state)}
             </Button>
           )}
+          {canReserve ? (
+            <Button variant="plain" onClick={reserveOnly}>
+              Reserve only
+            </Button>
+          ) : null}
+          {state.kind === "paying" && !state.inFlight && connected ? (
+            <Button variant="plain" disabled={pending} onClick={() => cancel(state.runId)}>
+              Cancel run
+            </Button>
+          ) : null}
           {state.kind === "short" && connected ? (
             <Button
               variant="tinted"
@@ -128,7 +169,8 @@ export function TreasuryHero(props: TreasuryHeroProps) {
             </Button>
           ) : null}
           <span className="t-caption ink-3">
-            {periodLabel} · {facts.lineCount} workers · <Money value={facts.totalSen} />
+            {periodLabel} · {facts.lineCount} workers ·{" "}
+            <Money value={facts.periodTotalSen ?? facts.totalSen} />
           </span>
         </div>
       </div>
@@ -168,8 +210,9 @@ function StatusLine({
     case "paying":
       body = (
         <p>
-          Paid {state.paid} of {state.total}
-          {state.inFlight ? "" : ". This run was left half paid."}
+          {!state.inFlight && state.paid === 0
+            ? `${state.total} pay lines reserved. Nothing is paid yet.`
+            : `Paid ${state.paid} of ${state.total}${state.inFlight ? "" : ". This run was left half paid."}`}
         </p>
       );
       break;
@@ -178,7 +221,8 @@ function StatusLine({
         <p className={styles.ok}>
           <CheckCircle size={20} weight="regular" />
           <span>
-            October paid · {state.lineCount} of {state.lineCount} · {formatRm(state.total)}
+            October paid · {state.lineCount} workers · {formatRm(state.total)}
+            {state.missed ? ` · ${state.missed} not paid` : ""}
           </span>
         </p>
       );

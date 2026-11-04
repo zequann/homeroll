@@ -2,9 +2,11 @@
 
 import { ShieldCheck } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
+import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
+import type { AttackId } from "@/lib/attacks";
 import { type AttackResult, runAttack } from "../actions";
 import styles from "./lab.module.css";
 
@@ -12,20 +14,24 @@ export function AttackCard({
   id,
   title,
   story,
+  badge,
 }: {
-  id: "02" | "01";
+  id: AttackId;
   title: string;
   /** The attacker's input, quoted. */
   story: string;
+  /** What this attack's agent runs on, when it is mocked ("Mock model"). */
+  badge?: string;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<AttackResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <article className={styles.card} aria-labelledby={`attack-${id}`}>
       <div className={styles.cardHead}>
         <h2 id={`attack-${id}`} className="t-headline">
-          {id} {title}
+          {id} {title} {badge ? <Badge>{badge}</Badge> : null}
         </h2>
         <Button
           variant="plain"
@@ -34,7 +40,12 @@ export function AttackCard({
           pendingLabel="Running…"
           onClick={() =>
             start(async () => {
-              setResult(await runAttack(id));
+              setError(null);
+              try {
+                setResult(await runAttack(id));
+              } catch {
+                setError("The attack could not run. Press Reset demo, then try again.");
+              }
             })
           }
         >
@@ -43,27 +54,59 @@ export function AttackCard({
       </div>
       <blockquote className={styles.story}>{story}</blockquote>
 
+      {error ? (
+        <p className="t-caption" role="alert">
+          {error}
+        </p>
+      ) : null}
+
       {result ? (
         <dl className={styles.result}>
           <dt className="t-caption ink-3">Agent proposed</dt>
           <dd>{result.proposed}</dd>
 
-          <dt className="t-caption ink-3">Payroll contract said no</dt>
-          <dd>
-            <ContractErrorNote
-              sentence={result.failure.sentence}
-              code={result.failure.code}
-              ruleCaption={result.failure.ruleCaption}
-            />
+          <dt className="t-caption ink-3">
+            {result.stoppedBy} said no
+            {result.simulated ? (
+              <>
+                {" "}
+                <Badge>Simulated on fake chain</Badge>
+              </>
+            ) : null}
+          </dt>
+          <dd className={styles.failures}>
+            {result.failures.map((f) => (
+              <ContractErrorNote
+                key={f.code + f.sentence}
+                sentence={f.sentence}
+                code={f.code}
+                ruleCaption={f.ruleCaption}
+              />
+            ))}
           </dd>
 
-          <dt className="t-caption ink-3">Treasury before · after</dt>
+          {result.notes.length ? (
+            <>
+              <dt className="t-caption ink-3">Notes</dt>
+              <dd>
+                <ul className={styles.notes}>
+                  {result.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              </dd>
+            </>
+          ) : null}
+
+          <dt className="t-caption ink-3">{result.money.label} before · after</dt>
           <dd className={styles.treasury}>
-            <Money value={result.treasuryBefore} /> · <Money value={result.treasuryAfter} />
-            <span className={styles.safe}>
-              <ShieldCheck size={14} weight="fill" aria-hidden />
-              Nothing was reserved or paid.
-            </span>
+            <Money value={result.money.beforeSen} /> · <Money value={result.money.afterSen} />
+            {result.money.beforeSen === result.money.afterSen ? (
+              <span className={styles.safe}>
+                <ShieldCheck size={14} weight="fill" aria-hidden />
+                No money moved.
+              </span>
+            ) : null}
           </dd>
         </dl>
       ) : null}

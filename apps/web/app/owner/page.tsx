@@ -11,16 +11,20 @@ import styles from "./_components/owner.module.css";
 import { PayLines } from "./_components/PayLines";
 import { TreasuryHero } from "./_components/TreasuryHero";
 import { WorkerPreview } from "./_components/WorkerPreview";
+import { Workers } from "./_components/Workers";
 
 export const metadata = { title: "Owner console · Homeroll" };
 
 const TABS = [
   { key: "pay-lines", label: "Pay lines" },
   { key: "invoices", label: "Invoices" },
+  { key: "workers", label: "Workers" },
   { key: "agent-keys", label: "Agent keys" },
   { key: "activity", label: "Activity" },
 ] as const;
-const tabSchema = z.enum(["pay-lines", "invoices", "agent-keys", "activity"]).catch("pay-lines");
+const tabSchema = z
+  .enum(["pay-lines", "invoices", "workers", "agent-keys", "activity"])
+  .catch("pay-lines");
 
 export default async function OwnerPage({
   searchParams,
@@ -70,8 +74,11 @@ export default async function OwnerPage({
             />
           </div>
 
-          {tab === "pay-lines" ? <PayLines rows={view.payLines} /> : null}
+          {tab === "pay-lines" ? <PayLines rows={view.payLines} connected={connected} /> : null}
           {tab === "invoices" ? <Invoices rows={view.invoices} connected={connected} /> : null}
+          {tab === "workers" ? (
+            <Workers rows={view.payees} connected={connected} onboarding={view.onboarding} />
+          ) : null}
           {tab === "agent-keys" ? <AgentKeys keys={view.keys} mode={view.mode} /> : null}
           {tab === "activity" ? <Activity rows={view.activity} /> : null}
         </section>

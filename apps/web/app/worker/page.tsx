@@ -1,12 +1,11 @@
-import { PaperPlaneTilt } from "@phosphor-icons/react/ssr";
+import { Bank, PaperPlaneTilt } from "@phosphor-icons/react/ssr";
 import { ButtonLink } from "@/components/Button";
-import { PlaceholderRow } from "@/components/PlaceholderRow";
 import { RollingMoney } from "@/components/RollingMoney";
-import { ConnectButton } from "@/components/WalletButton";
 import { readSession } from "@/lib/session";
 import { loadRahimView } from "@/lib/views/rahim";
 import { ActivityList, type WorkerActivityItem } from "./_components/ActivityList";
 import { RefreshWhileVisible } from "./_components/RefreshWhileVisible";
+import { WorkerSignIn } from "./_components/WorkerSignIn";
 import styles from "./_components/worker.module.css";
 
 export const metadata = { title: "Worker · Homeroll" };
@@ -48,9 +47,13 @@ export default async function WorkerPage() {
               Send home
             </ButtonLink>
           ) : (
-            <ConnectButton account="worker:w-7k2q9x" fullWidth />
+            <WorkerSignIn />
           )}
-          <PlaceholderRow name="Cash out to DuitNow" caption="Not in this build." />
+          {connected ? (
+            <ButtonLink href="/worker/cashout" variant="tinted" fullWidth icon={<Bank size={20} />}>
+              Cash out
+            </ButtonLink>
+          ) : null}
 
           <div className={styles.sectionLabel}>
             <ActivityList items={items} />

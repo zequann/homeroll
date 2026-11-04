@@ -1,4 +1,5 @@
 import { type AccountId, isValidAccountId, workerAccountId } from "@homeroll/shared";
+import { buyerHash, invoiceHash } from "@homeroll/shared/invoice";
 import { z } from "zod";
 import companyJson from "./company.json" with { type: "json" };
 import invoicesJson from "./invoices.json" with { type: "json" };
@@ -18,6 +19,8 @@ const companySchema = z.object({
   ownerLabel: z.string(),
   treasurySen: sen,
   bufferSen: sen,
+  /** Synthetic seller TIN. Each Reset demo company gets a fresh one (SPEC §9.6). */
+  sellerTin: z.string().startsWith("SYN-"),
   period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
 });
 
@@ -32,22 +35,31 @@ const workerSchema = z.object({
   family: z.object({ label: z.string(), wallet: z.string(), city: z.string() }).optional(),
 });
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * What the invoice agent can look up about one invoice (SPEC §8.1): the document's fields plus the
+ * evidence the mock MyInvois, PO/delivery and buyer-history checks read. The grade is decided by
+ * code in lib/agents; `expectedGrade` is SPEC §4's expected result, kept so tests can compare.
+ */
 const invoiceSchema = z.object({
   number: z.string(),
   buyer: z.string(),
+  buyerTin: z.string().startsWith("SYN-"),
   amountSen: sen,
-  issued: z.string(),
-  due: z.string(),
-  grade: z.enum(["A", "B", "C", "D"]),
-  advanceBps: z.number().int().min(0).max(8000),
-  feeBps: z.number().int().min(0),
-  checks: z.array(
-    z.object({
-      title: z.string(),
-      detail: z.string(),
-      result: z.enum(["ok", "warn", "fail"]),
-    }),
-  ),
+  issued: isoDate,
+  due: isoDate,
+  poNumber: z.string().nullable(),
+  /** null = no MyInvois record exists. */
+  myinvoisUuid: z.string().nullable(),
+  deliveryOrderSigned: z.boolean(),
+  buyerHistory: z.object({
+    invoices: z.number().int().nonnegative(),
+    paidOnTime: z.number().int().nonnegative(),
+    paidAfter120Days: z.number().int().nonnegative(),
+    averageDays: z.number().int().nonnegative(),
+  }),
+  expectedGrade: z.enum(["A", "B", "C", "D"]),
 });
 
 const timesheetSchema = z.array(z.object({ name: workerAccountName, amountSen: sen }));
@@ -62,7 +74,11 @@ const WORKERS = z.array(workerSchema).parse(workersJson);
 const BY_NAME = new Map(WORKERS.map((w) => [w.name, w]));
 
 export type Worker = z.infer<typeof workerSchema> & { accountId: AccountId };
-export type Invoice = z.infer<typeof invoiceSchema>;
+export type Invoice = z.infer<typeof invoiceSchema> & {
+  /** The pool's registry key (SPEC §7.4). */
+  hash: string;
+  buyerHash: string;
+};
 export type Timesheet = { accountId: AccountId; amountSen: number }[];
 
 export interface Fixtures {
@@ -92,7 +108,20 @@ export function loadFixtures(root: AccountId): Fixtures {
     root,
     company: { ...company, accountId: labelledAccount(company.ownerLabel, root) },
     workers: WORKERS.map((w) => ({ ...w, accountId: workerAccountId(w.name, root) })),
-    invoices: z.array(invoiceSchema).parse(invoicesJson),
+    invoices: z
+      .array(invoiceSchema)
+      .parse(invoicesJson)
+      .map((i) => ({
+        ...i,
+        hash: invoiceHash({
+          sellerTin: company.sellerTin,
+          buyerTin: i.buyerTin,
+          invoiceNo: i.number,
+          issueDate: i.issued,
+          amountSen: i.amountSen,
+        }),
+        buyerHash: buyerHash(i.buyerTin),
+      })),
     lender: { ...lender, accountId: labelledAccount(lender.label, root) },
     timesheet: toLines(timesheetJson),
     timesheetTampered: toLines(tamperedJson),

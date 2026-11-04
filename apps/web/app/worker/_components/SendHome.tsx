@@ -1,13 +1,13 @@
 "use client";
 
 import { PaperPlaneTilt } from "@phosphor-icons/react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, formatTaka, parseRm, type Sen } from "@/lib/fx";
-import { BENCHMARKS, benchmarkTaka, SampleQuote } from "@/lib/remit";
-import { sendHome } from "../actions";
+import { BENCHMARKS, benchmarkTaka, type RemitQuote, SampleQuote } from "@/lib/remit";
+import { priceSwap, sendHome } from "../actions";
 import styles from "./worker.module.css";
 
 const pct = (bps: number) => `${Math.floor(bps / 100)}.${String(bps % 100).padStart(2, "0")}%`;
@@ -16,10 +16,13 @@ export function SendHome({
   balanceSen,
   connected,
   recipient,
+  liveQuotes,
 }: {
   balanceSen: Sen;
   connected: boolean;
   recipient: { label: string; wallet: string; city: string };
+  /** The server asks NEAR Intents for a dry-run quote as the amount changes. */
+  liveQuotes: boolean;
 }) {
   const [text, setText] = useState("800");
   const [pending, start] = useTransition();
@@ -28,7 +31,23 @@ export function SendHome({
   const amount = parseRm(text);
   const hasBalance = balanceSen > 0;
   const tooMuch = amount !== null && amount > balanceSen;
-  const quote = amount !== null && amount > 0 ? SampleQuote.quote(amount) : null;
+  const [live, setLive] = useState<RemitQuote | null>(null);
+  const sample = amount !== null && amount > 0 ? SampleQuote.quote(amount) : null;
+  const quote = live && live.amountSen === amount ? live : sample;
+  const isLive = quote?.swap.source === "live";
+
+  useEffect(() => {
+    if (!liveQuotes || amount === null || amount <= 0) return;
+    let stale = false;
+    const id = setTimeout(async () => {
+      const next = await priceSwap(amount).catch(() => null);
+      if (!stale) setLive(next);
+    }, 400);
+    return () => {
+      stale = true;
+      clearTimeout(id);
+    };
+  }, [amount, liveQuotes]);
 
   const hint = !hasBalance
     ? "You have RM0.00. Your October wage arrives when Perabot Jaya runs payroll."
@@ -87,7 +106,7 @@ export function SendHome({
           <li key={r.who} className={styles.compareRow} data-homeroll={r.sample || undefined}>
             <span className={styles.compareWho}>
               {r.who}
-              {r.sample ? <Badge>Sample quote</Badge> : null}
+              {r.sample ? <Badge>{isLive ? "Live quote" : "Sample quote"}</Badge> : null}
             </span>
             <span className="ink-2">{pct(r.bps)}</span>
             <span className={styles.compareTaka}>{r.taka === null ? "–" : formatTaka(r.taka)}</span>
@@ -95,8 +114,11 @@ export function SendHome({
         ))}
       </ul>
       <p className="t-caption ink-3">
-        Swap leg is a made-up sample in this build. Payout fee 1.0% is an assumption. Averages:
-        World Bank Remittance Prices Worldwide, Q3 2025, sending USD 200.
+        {isLive
+          ? "Swap leg: NEAR Intents live quote, no funds moved."
+          : "Swap leg is a made-up sample."}{" "}
+        Payout fee 1.0% is an assumption. Averages: World Bank Remittance Prices Worldwide, Q3 2025,
+        sending USD 200.
       </p>
 
       {error ? (
@@ -120,7 +142,9 @@ export function SendHome({
                 setError(
                   result.reason === "too-much"
                     ? "That is more than your balance."
-                    : "Connect Rahim's wallet to send.",
+                    : result.reason === "relayer"
+                      ? `Not sent. ${result.message} Nothing left your account.`
+                      : "Connect Rahim's wallet to send.",
                 );
               }
             })
