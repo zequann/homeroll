@@ -28,6 +28,7 @@ Exact versions, pinned where each is declared.
 | `@types/react`, `@types/react-dom` | 19.3.0 | `apps/web/package.json` |
 | `near-api-js` | 7.4.0 | `apps/web/package.json` |
 | `borsh` | 2.0.0 | `apps/web/package.json` |
+| `pdf-lib` (invoice PDFs, pure JS) | 1.17.1 | `packages/shared/package.json` |
 
 ## Try it
 

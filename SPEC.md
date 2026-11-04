@@ -358,6 +358,8 @@ status: Attested | Advanced | Settled | Declined
 const HARD_MAX_ADVANCE_BPS: u16 = 8000;   // in code, not config
 ```
 
+`max_buyer_exposure` starts at 0, so no advance is possible until the admin sets it. The demo value is **RM120,000 equivalent** (`28571428571` base units), which exactly covers the §4 advance on INV-2026-1043. `FakeChainClient` uses the same value.
+
 **Grade table (initial values, admin-settable, every `max_advance_bps` clamped to 8000):**
 
 | Grade | Max advance | Fee (of advance) |
@@ -393,7 +395,16 @@ const HARD_MAX_ADVANCE_BPS: u16 = 8000;   // in code, not config
    - PO and signed delivery order present and matching (fixtures).
    - Buyer payment history stats (fixtures).
    - Invoice hash not already registered (`pool.get_invoice` view).
-3. **Grade** from a rules table in code. The model may add `flags[]` and may **only lower** the grade, never raise it.
+3. **Grade** from a rules table in code (`lib/agents/grading.ts`), first match wins. The model may add `flags[]` and may **only lower** the grade, never raise it. A suggestion that is not `A`–`D` (for example "A+") is ignored.
+
+   | Buyer and document evidence | Grade |
+   |---|---|
+   | Any check failed: no matching MyInvois record, no signed delivery order or matching PO, or hash already registered | D |
+   | Buyer has no invoice history | C |
+   | 10% or more of the buyer's invoices were paid after 120 days | C |
+   | Buyer has at least 20 invoices, all paid on time | A |
+   | Otherwise | B |
+
 4. **Attest** on-chain: `pool.attest_invoice(...)` signed with the `agent.<root>` function-call key, with `attestation_ref = "none"`.
 
 Return to UI: per-check results, grade, max advance, fee, and what the model said (with the mock badge).
@@ -404,8 +415,8 @@ Return to UI: per-check results, grade, max advance, fee, and what the model sai
 
 ### 8.2 Payroll agent — `POST /api/agents/payroll`
 
-1. Read the period's timesheet (fixture CSV) → compute net wage per worker (base + overtime × rate; no statutory deductions).
-2. Build the run's `PayLine[]`.
+1. Read the period's timesheet (`fixtures/timesheets/<period>.json`) → compute net wage per worker (base + overtime × rate; no statutory deductions). All in integer sen. The fixtures' demo overtime rate is RM10 per hour, and base + overtime equals the net wages in §4.
+2. Build the run's `PayLine[]`. Leave out anyone who already holds the period, is not a payee, or is on hold, so one removed worker does not block the rest. The contract still checks whatever is sent.
 3. Return a preview to the owner console (names resolved off-chain). When the owner clicks "Run payroll", call `submit_run` once with the **payroll agent function-call key**, then call `pay_run` until the run is `Done`.
 4. "Pay missed worker" submits a one-line run for the same period the same way.
 5. Surface contract errors in the UI with the worker's name resolved off-chain (e.g. `ERR_ABOVE_WAGE_CAP:4:w-6b1x4k.<root>` → "Line 5, Hafiz Rahman: above wage cap").
@@ -440,6 +451,7 @@ interface RemitRoute {
 
 - **`IntentsQuote`** (P0): calls the NEAR Intents 1Click quote endpoint through the shared client in `lib/intents` (also used by §8.9), `POST https://1click.chaindefuser.com/v0/quote` with `"dry": true` (mainnet; Intents has no testnet), for the real price of the swap leg — USDC on NEAR → the partner's settlement asset (USDT on Tron). **No funds move.** No API key: the docs add a 0.25% fee for callers without one (not charged on this route when measured on 21 Oct 2026). Show whatever the quote returns. Solvers compete on **this swap leg only**.
 - **1Click terms:** never store a quote response for more than 24 hours or commit one as a fixture; fake quotes (`CHAIN_CLIENT=fake`, tests) use made-up numbers. Refer to NEAR Intents only as the technology used, never as a partner.
+- `INTENTS_QUOTES=live|sample` picks the swap leg's source. It defaults to `live` with `CHAIN_CLIENT=near` and `sample` with `fake`. If a live quote fails, the UI falls back to a labelled sample.
 - **`MockRoute`** (P0, testnet): executes the transfer — `ft_transfer` tUSDC → `payout.<root>`. The mock partner deducts 1.0% all-in, including FX margin (an assumption, labelled in the UI), and returns a BDT receipt after a short delay.
 - The UI shows two legs honestly: **"Swap — NEAR Intents (live quote)"** and **"Payout in BDT — partner (mock, assumed 1.0% incl. FX)"**. Solvers do not quote taka.
 - A real Intents transfer needs real mainnet funds and is out of scope. For real swaps, the 1Click terms require each end user's own wallet to be visible, which fits worker-owned accounts.
@@ -447,7 +459,7 @@ interface RemitRoute {
 
 ### 8.5 Cash out — `lib/cashout`
 
-`CashoutRoute` with `MockDuitNow`: `ft_transfer` tUSDC → `offramp.<root>`, mock returns a DuitNow reference to a TNG eWallet or bank, shown in RM.
+`CashoutRoute` with `MockDuitNow`: `ft_transfer` tUSDC → `offramp.<root>`, mock returns a DuitNow reference to a TNG eWallet or bank, shown in RM. The mock off-ramp deducts **0.5%** (an assumption, labelled in the UI), with the fee rounded up.
 
 ### 8.6 Mock partners — `app/api/mock/*`
 
@@ -522,7 +534,7 @@ Labelled "Owner / HR": in P0 the owner also does HR (D13).
 
 - **Dashboard:** treasury (RM), advanced against invoices, payroll due, lender pool status.
 - **Invoices:** upload → live check list (4 checks) → grade card → advance offer (amount, fee, what pool gets back, what owner gets) → accept (signed by owner). The current demo company's invoices are offered as downloads.
-- **Payroll:** timesheet preview (40 lines with names, wage cap column) → "Run payroll" → per-line status → result. "Pay missed worker" submits a one-line run for the same period. "Cancel run" while lines are still unsent. Errors from the contract shown with a plain-English explanation.
+- **Payroll:** timesheet preview (40 lines with names, wage cap column) → "Run payroll" → per-line status → result. "Reserve only" submits the run without paying, so the owner can still change it. "Pay missed worker" submits a one-line run for the same period. "Cancel run" while lines are still unsent. Errors from the contract shown with a plain-English explanation.
 - **Workers:** payee list (name + pseudonymous account); "Add payee" shows the 48-hour hold countdown.
 - **Agent keys:** shows each function-call key's receiver, methods and allowance, read from chain (`view_access_key_list`). This screen *is* the "why NEAR" slide.
 - **Activity:** every tx with actor, method, result, link to the testnet explorer.
@@ -773,7 +785,7 @@ Follow `HACKATHON.md` for the exact field rules.
 8. Real-world operation would need licensed partners regulated by Bank Negara Malaysia.
 9. A payee is paid at most once per period through payroll, so a top-up for a worker already paid (for example forgotten overtime) is paid by the owner by hand.
 10. The contract checks limits, not correctness: an agent can still propose a wrong amount below the wage cap, so the owner reviews the preview before running payroll.
-11. The payout partner's 1.0% all-in fee (including FX margin) is an assumption, not a quote.
+11. The payout partner's 1.0% all-in fee (including FX margin) and the DuitNow off-ramp's 0.5% fee are assumptions, not quotes.
 
 ### Future roadmap
 
