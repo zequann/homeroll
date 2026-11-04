@@ -23,6 +23,10 @@ export type Signer =
   | { role: "owner"; accountId: AccountId }
   /** Signs as the employer with the function-call key: payroll.submit_run and pay_run only (SPEC §6). */
   | { role: "payrollAgent"; accountId: AccountId }
+  /** agent.<root> with its function-call key: pool.attest_invoice only (SPEC §6). */
+  | { role: "invoiceAgent"; accountId: AccountId }
+  /** escrow.<root>, the mock bank that settles invoices when the buyer pays (SPEC §8.6). */
+  | { role: "settler"; accountId: AccountId }
   | { role: "worker"; accountId: AccountId }
   | { role: "lender"; accountId: AccountId };
 
@@ -51,15 +55,29 @@ export interface PayeeView {
   activeFrom: bigint;
 }
 export type InvoiceStatus = "Attested" | "Advanced" | "Settled" | "Declined";
+export type Grade = "A" | "B" | "C" | "D";
 export interface InvoiceView {
+  /** The invoice hash (SPEC §7.4), hex. */
   invoiceKey: string;
   employer: AccountId;
   amount: Units;
-  grade: "A" | "B" | "C" | "D";
+  grade: Grade;
   status: InvoiceStatus;
   advance: Units | null;
   fee: Units | null;
 }
+/** Arguments of `pool.attest_invoice` (SPEC §7.4). Hashes only; raw invoice data stays off-chain. */
+export interface Attestation {
+  invoiceKey: string;
+  employer: AccountId;
+  buyerHash: string;
+  amount: Units;
+  /** Nanoseconds. */
+  dueTs: bigint;
+  grade: Grade;
+  attestationRef: string;
+}
+export type SettleOutcome = { settled: true; invoice: InvoiceView } | { settled: false };
 export interface PoolView {
   cash: Units;
   outstanding: Units;
@@ -110,7 +128,19 @@ export interface ChainClient {
   // Calls
   submitRun(signer: Signer, period: Period, lines: PayLine[]): Promise<Tx<{ runId: number }>>;
   payRun(signer: Signer, runId: number): Promise<Tx<RunView>>;
+  /** Invoice agent registers a checked invoice (R7, R10). */
+  attestInvoice(signer: Signer, attestation: Attestation): Promise<Tx<InvoiceView>>;
   requestAdvance(signer: Signer, invoiceKey: string, amount: Units): Promise<Tx<InvoiceView>>;
+  /**
+   * The mock bank forwards the buyer's payment (`ft_transfer_call` with `{"settle":…}`): the pool
+   * keeps advance + fee and sends the rest to the employer's treasury (SPEC §7.4, R10).
+   *
+   * The pool has two kinds of no here. An unknown settler panics in `ft_on_transfer` with
+   * `ERR_NOT_SETTLER`: a failed Tx (near mode reads it from the receipts, since the token refunds
+   * and the outer call succeeds). An invoice that is not advanced, or a payment below advance +
+   * fee, is refunded with no error at all: `{ settled: false }` on a successful Tx.
+   */
+  settleInvoice(signer: Signer, invoiceKey: string, paid: Units): Promise<Tx<SettleOutcome>>;
   /** Worker transfer to payout.<root> or offramp.<root>. In near mode it goes through the relayer (SPEC §8.3). */
   ftTransfer(signer: Signer, receiverId: AccountId, amount: Units, memo: string): Promise<Tx<null>>;
   /** SPEC §9.6. Fake restores fixtures; near calls the on-chain dev's /api/demo route. */

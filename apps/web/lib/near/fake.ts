@@ -8,8 +8,10 @@ import {
 } from "@homeroll/shared";
 import { type ActivityLog, getActivityLog } from "@/lib/activity";
 import { sen, senToUnits, type Units, units } from "@/lib/fx";
+import { GRADE_TABLE, maxAdvanceBps } from "@/lib/pool-grades";
 import type {
   AccessKeyView,
+  Attestation,
   ChainClient,
   EmployerView,
   InvoiceView,
@@ -20,19 +22,23 @@ import type {
   PoolView,
   RunStatus,
   RunView,
+  SettleOutcome,
   Signer,
   Tx,
   TxFailure,
 } from "./client";
 import { failureText } from "./failure";
 
-/** Placeholder until Q3 measures the real number (SPEC §7.3). Rahim is line 0, so he is in call 1. */
-export const FAKE_MAX_LINES_PER_CALL = 10;
+/** The contract's `max_lines_per_call` (SPEC §7.3). 40 workers take two calls; Rahim is in the first. */
+export const FAKE_MAX_LINES_PER_CALL = 36;
 /** The demo floor (SPEC §7.3 initial config). */
 const MAX_LINES_PER_RUN = 40;
-/** Hard cap on any advance, in code (SPEC §7.4). */
-const HARD_MAX_ADVANCE_BPS = 8000n;
 const YOCTO_PER_NEAR = 10n ** 24n;
+/**
+ * Pool's per-buyer limit (R11). The contract starts at 0 and the admin sets it, so this stands in
+ * for what seed must set: at least the RM120,000 advance on INV-2026-1043.
+ */
+const MAX_BUYER_EXPOSURE = senToUnits(sen(20_000_000));
 
 type Grade = InvoiceView["grade"];
 
@@ -46,11 +52,10 @@ interface FakeRun {
 interface FakeInvoice {
   invoiceKey: string;
   employer: AccountId;
+  buyerHash: string;
   amount: Units;
   grade: Grade;
   status: InvoiceView["status"];
-  advanceBps: number;
-  feeBps: number;
   advance: Units | null;
   fee: Units | null;
 }
@@ -61,7 +66,9 @@ interface FakeState {
   onboarding: boolean;
   payees: Map<AccountId, { cap: Units; activeFrom: bigint }>;
   runs: FakeRun[];
+  /** The pool's invoice registry, keyed by invoice hash. Empty until the invoice agent attests. */
   invoices: Map<string, FakeInvoice>;
+  buyerExposure: Map<string, Units>;
   pool: { cash: Units; outstanding: Units; feesEarned: Units };
   balances: Map<AccountId, Units>;
   txCounter: number;
@@ -268,32 +275,104 @@ export class FakeChainClient implements ChainClient {
   ): Promise<Tx<InvoiceView>> {
     const s = this.state;
     const invoice = s.invoices.get(invoiceKey);
-    if (!invoice) throw new Error(`Unknown invoice "${invoiceKey}"`);
     const fail = (failure: TxFailure) =>
       this.reject("request_advance", signer, this.accounts.pool, amount, failure);
 
     // The payroll agent's key may only call payroll.*; NEAR rejects pool.* before our code runs.
     if (signer.role === "payrollAgent") return fail({ kind: "protocol", name: "ReceiverMismatch" });
+    // Same order as Books::begin_advance: registry, then status, then caller.
+    if (!invoice) return fail(rejectCode("ERR_NOT_EMPLOYER"));
+    // R7: one invoice, one advance. A declined invoice has a cap of zero (R8).
+    if (invoice.status === "Declined") return fail(rejectCode("ERR_ADVANCE_ABOVE_CAP"));
+    if (invoice.status !== "Attested") return fail(rejectCode("ERR_INVOICE_ALREADY_REGISTERED"));
     // Only the invoice's employer may ask for the advance
     if (signer.role !== "owner" || signer.accountId !== invoice.employer) {
       return fail(rejectCode("ERR_NOT_EMPLOYER"));
     }
-    // R7: one invoice, one advance. A declined invoice has a cap of zero (R8).
-    if (invoice.status === "Declined") return fail(rejectCode("ERR_ADVANCE_ABOVE_CAP"));
-    if (invoice.status !== "Attested") return fail(rejectCode("ERR_INVOICE_ALREADY_REGISTERED"));
     // R8: advance <= invoice * min(grade cap, 80%)
     if (amount > maxAdvance(invoice)) return fail(rejectCode("ERR_ADVANCE_ABOVE_CAP"));
     if (s.pool.cash < amount) return fail(rejectCode("ERR_POOL_INSUFFICIENT"));
+    // R11: per-buyer exposure limit
+    const exposure = s.buyerExposure.get(invoice.buyerHash) ?? units(0n);
+    if (exposure + amount > MAX_BUYER_EXPOSURE) return fail(rejectCode("ERR_BUYER_EXPOSURE"));
 
+    s.buyerExposure.set(invoice.buyerHash, units(exposure + amount));
     s.pool.cash = units(s.pool.cash - amount);
     s.pool.outstanding = units(s.pool.outstanding + amount);
     s.treasury = units(s.treasury + amount);
     invoice.status = "Advanced";
     invoice.advance = amount;
-    invoice.fee = units((amount * BigInt(invoice.feeBps) + 9_999n) / 10_000n);
+    // Fees round up (SPEC §10)
+    invoice.fee = units((amount * BigInt(GRADE_TABLE[invoice.grade].feeBps) + 9_999n) / 10_000n);
     const txHash = this.nextTxHash();
     this.log("request_advance", signer, this.accounts.pool, amount, txHash, null);
     return { ok: true, txHash, value: toInvoiceView(invoice) };
+  }
+
+  async attestInvoice(signer: Signer, a: Attestation): Promise<Tx<InvoiceView>> {
+    const s = this.state;
+    const fail = (failure: TxFailure) =>
+      this.reject("attest_invoice", signer, this.accounts.pool, a.amount, failure);
+
+    // The payroll agent's key is bound to payroll.<root>; NEAR rejects pool.* before our code runs.
+    if (signer.role === "payrollAgent") return fail({ kind: "protocol", name: "ReceiverMismatch" });
+    // R10: only registered agents attest
+    if (signer.role !== "invoiceAgent" || signer.accountId !== this.accounts.agent) {
+      return fail(rejectCode("ERR_NOT_AGENT"));
+    }
+    // R7: one invoice, one registration (so one advance)
+    if (s.invoices.has(a.invoiceKey)) return fail(rejectCode("ERR_INVOICE_ALREADY_REGISTERED"));
+
+    const invoice: FakeInvoice = {
+      invoiceKey: a.invoiceKey,
+      employer: a.employer,
+      buyerHash: a.buyerHash,
+      amount: a.amount,
+      grade: a.grade,
+      // Grade D is registered as declined, so the same invoice cannot be re-attested later
+      status: a.grade === "D" ? "Declined" : "Attested",
+      advance: null,
+      fee: null,
+    };
+    s.invoices.set(a.invoiceKey, invoice);
+    const txHash = this.nextTxHash();
+    this.log("attest_invoice", signer, this.accounts.pool, a.amount, txHash, null);
+    return { ok: true, txHash, value: toInvoiceView(invoice) };
+  }
+
+  async settleInvoice(signer: Signer, invoiceKey: string, paid: Units): Promise<Tx<SettleOutcome>> {
+    const s = this.state;
+    const invoice = s.invoices.get(invoiceKey);
+    const fail = (failure: TxFailure) =>
+      this.reject("settle", signer, this.accounts.pool, paid, failure);
+
+    // R10: only settlers settle
+    if (signer.role !== "settler" || signer.accountId !== this.accounts.escrow) {
+      return fail(rejectCode("ERR_NOT_SETTLER"));
+    }
+    // Books::begin_settle refunds these with no error: the token call succeeds, nothing settles.
+    const refunded = (): Tx<SettleOutcome> => {
+      const txHash = this.nextTxHash();
+      this.log("settle (refunded)", signer, this.accounts.pool, paid, txHash, null);
+      return { ok: true, txHash, value: { settled: false } };
+    };
+    if (invoice?.status !== "Advanced" || !invoice.advance || !invoice.fee) return refunded();
+    const owed = invoice.advance + invoice.fee;
+    if (paid < owed) return refunded();
+
+    // Repay advance + fee to the pool, forward the rest to the employer's payroll treasury
+    s.pool.cash = units(s.pool.cash + owed);
+    s.pool.outstanding = units(s.pool.outstanding - invoice.advance);
+    s.pool.feesEarned = units(s.pool.feesEarned + invoice.fee);
+    s.buyerExposure.set(
+      invoice.buyerHash,
+      units((s.buyerExposure.get(invoice.buyerHash) ?? invoice.advance) - invoice.advance),
+    );
+    if (invoice.employer === s.employer) s.treasury = units(s.treasury + (paid - owed));
+    invoice.status = "Settled";
+    const txHash = this.nextTxHash();
+    this.log("settle", signer, this.accounts.pool, paid, txHash, null);
+    return { ok: true, txHash, value: { settled: true, invoice: toInvoiceView(invoice) } };
   }
 
   async ftTransfer(
@@ -324,7 +403,7 @@ export class FakeChainClient implements ChainClient {
   // ---- Internals ---------------------------------------------------------------------
 
   private initialState(): FakeState {
-    const { company, workers, invoices, lender } = this.fixtures;
+    const { company, workers, lender } = this.fixtures;
     return {
       employer: company.accountId,
       treasury: senToUnits(sen(company.treasurySen)),
@@ -334,22 +413,8 @@ export class FakeChainClient implements ChainClient {
         workers.map((w) => [w.accountId, { cap: senToUnits(sen(w.capSen)), activeFrom: 0n }]),
       ),
       runs: [],
-      invoices: new Map(
-        invoices.map((i) => [
-          i.number,
-          {
-            invoiceKey: i.number,
-            employer: company.accountId,
-            amount: senToUnits(sen(i.amountSen)),
-            grade: i.grade,
-            status: i.grade === "D" ? "Declined" : "Attested",
-            advanceBps: i.advanceBps,
-            feeBps: i.feeBps,
-            advance: null,
-            fee: null,
-          },
-        ]),
-      ),
+      invoices: new Map(),
+      buyerExposure: new Map(),
       pool: {
         cash: units(BigInt(lender.depositUsdc) * 1_000_000n),
         outstanding: units(0n),
@@ -456,9 +521,7 @@ function toView(run: FakeRun, runId: number): RunView {
 }
 
 function maxAdvance(invoice: FakeInvoice): Units {
-  const bps = BigInt(invoice.advanceBps);
-  const capped = bps < HARD_MAX_ADVANCE_BPS ? bps : HARD_MAX_ADVANCE_BPS;
-  return units((invoice.amount * capped) / 10_000n);
+  return units((invoice.amount * BigInt(maxAdvanceBps(invoice.grade))) / 10_000n);
 }
 
 function toInvoiceView(i: FakeInvoice): InvoiceView {

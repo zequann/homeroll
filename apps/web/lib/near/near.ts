@@ -36,6 +36,12 @@ export class NearChainClient implements ChainClient {
   payRun(): never {
     throw new Error(NOT_BUILT);
   }
+  attestInvoice(): never {
+    throw new Error(NOT_BUILT);
+  }
+  settleInvoice(): never {
+    throw new Error(NOT_BUILT);
+  }
   requestAdvance(): never {
     throw new Error(NOT_BUILT);
   }

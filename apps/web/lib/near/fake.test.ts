@@ -6,7 +6,13 @@ import { formatRm, formatUsdc, sen, units, unitsToSen } from "@/lib/fx";
 import { nameOf } from "@/lib/names";
 import { toPayLines } from "@/lib/payroll";
 import { period } from "./client";
-import { advanceUnits, runChainClientSuite, signers } from "./client.suite";
+import {
+  advanceUnits,
+  attestFixtureInvoices,
+  key,
+  runChainClientSuite,
+  signers,
+} from "./client.suite";
 import { FakeChainClient } from "./fake";
 
 const ROOT = "homeroll-test.testnet";
@@ -22,6 +28,13 @@ function make(now = NOW) {
   return { chain, fixtures, activity, ...signers(fixtures) };
 }
 
+/** As the demo runs it: the invoice agent attests first, then the owner can take advances. */
+async function makeAttested(now = NOW) {
+  const ctx = make(now);
+  await attestFixtureInvoices(ctx.chain, ctx.fixtures);
+  return ctx;
+}
+
 runChainClientSuite("FakeChainClient", () => ({
   ...make(),
   openPeriod: OCT,
@@ -30,9 +43,13 @@ runChainClientSuite("FakeChainClient", () => ({
 
 describe("the three demo moments on the fake chain", () => {
   it("1. Run payroll pays 40 and Rahim's phone shows RM1,950.00", async () => {
-    const { chain, fixtures, owner, agent } = make();
+    const { chain, fixtures, owner, agent } = await makeAttested();
     const employer = fixtures.company.accountId;
-    await chain.requestAdvance(owner, "INV-2026-1043", advanceUnits(fixtures, "INV-2026-1043"));
+    await chain.requestAdvance(
+      owner,
+      key(fixtures, "INV-2026-1043"),
+      advanceUnits(fixtures, "INV-2026-1043"),
+    );
     const before = await chain.getEmployer(employer);
     expect(rmNearest(before?.treasury ?? 0n)).toBe("RM138,400");
 
@@ -51,7 +68,8 @@ describe("the three demo moments on the fake chain", () => {
       if (!next.ok) break;
       calls += 1;
     }
-    expect(calls).toBe(4);
+    // max_lines_per_call is 36 (SPEC §7.3): a 40-line run takes two pay_run calls.
+    expect(calls).toBe(2);
     const runs = await chain.getRuns(employer, OCT);
     expect(runs?.[0]?.lines.filter((l) => l.status === "Paid")).toHaveLength(40);
 
@@ -95,9 +113,13 @@ describe("the three demo moments on the fake chain", () => {
   });
 
   it("3. a Grade C advance alone leaves payroll short by RM39,400", async () => {
-    const { chain, fixtures, owner, agent } = make();
+    const { chain, fixtures, owner, agent } = await makeAttested();
     const employer = fixtures.company.accountId;
-    await chain.requestAdvance(owner, "INV-2026-1047", advanceUnits(fixtures, "INV-2026-1047"));
+    await chain.requestAdvance(
+      owner,
+      key(fixtures, "INV-2026-1047"),
+      advanceUnits(fixtures, "INV-2026-1047"),
+    );
 
     const view = await chain.getEmployer(employer);
     if (!view) throw new Error("no employer");
@@ -117,7 +139,7 @@ describe("the three demo moments on the fake chain", () => {
   });
 
   it("shows RM64,600 short before any advance, and RM85,600 left after both", async () => {
-    const { chain, fixtures, owner } = make();
+    const { chain, fixtures, owner } = await makeAttested();
     const employer = fixtures.company.accountId;
     const lines = toPayLines(fixtures.timesheet);
     const total = lines.reduce((s, l) => s + l.amount, 0n);
@@ -125,8 +147,16 @@ describe("the three demo moments on the fake chain", () => {
     if (!first) throw new Error("no employer");
     expect(rmNearest(total + first.buffer - first.treasury)).toBe("RM64,600");
 
-    await chain.requestAdvance(owner, "INV-2026-1043", advanceUnits(fixtures, "INV-2026-1043"));
-    await chain.requestAdvance(owner, "INV-2026-1047", advanceUnits(fixtures, "INV-2026-1047"));
+    await chain.requestAdvance(
+      owner,
+      key(fixtures, "INV-2026-1043"),
+      advanceUnits(fixtures, "INV-2026-1043"),
+    );
+    await chain.requestAdvance(
+      owner,
+      key(fixtures, "INV-2026-1047"),
+      advanceUnits(fixtures, "INV-2026-1047"),
+    );
     const after = await chain.getEmployer(employer);
     expect(rmNearest((after?.treasury ?? 0n) - total)).toBe("RM85,600");
   });
@@ -151,8 +181,12 @@ describe("FakeChainClient clock (R14)", () => {
 
 describe("activity log", () => {
   it("records successes and failures with the exact error text", async () => {
-    const { chain, fixtures, owner, agent, activity } = make();
-    await chain.requestAdvance(owner, "INV-2026-1043", advanceUnits(fixtures, "INV-2026-1043"));
+    const { chain, fixtures, owner, agent, activity } = await makeAttested();
+    await chain.requestAdvance(
+      owner,
+      key(fixtures, "INV-2026-1043"),
+      advanceUnits(fixtures, "INV-2026-1043"),
+    );
     await chain.submitRun(agent, OCT, toPayLines(fixtures.timesheetTampered));
     const [latest, earlier] = activity.list();
     expect(latest?.method).toBe("submit_run");
@@ -163,8 +197,12 @@ describe("activity log", () => {
   });
 
   it("is cleared by a reset", async () => {
-    const { chain, owner, fixtures, activity } = make();
-    await chain.requestAdvance(owner, "INV-2026-1043", advanceUnits(fixtures, "INV-2026-1043"));
+    const { chain, owner, fixtures, activity } = await makeAttested();
+    await chain.requestAdvance(
+      owner,
+      key(fixtures, "INV-2026-1043"),
+      advanceUnits(fixtures, "INV-2026-1043"),
+    );
     await chain.resetDemo();
     expect(activity.list()).toEqual([]);
   });
