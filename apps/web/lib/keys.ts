@@ -103,14 +103,23 @@ function redactDerived<R extends KeyRole>(key: DerivedKey<R>): DerivedKey<R> {
   });
 }
 
-/** Public key for an existing `ed25519:` secret string. Node crypto only. */
+/**
+ * Public key for an existing `ed25519:` secret string. Node crypto only.
+ * A NEAR wallet export is 64 bytes (seed, then public key). near-api-js signs
+ * with the first 32. A bare 32-byte seed is the same key.
+ */
 export function publicKeyFromSecretKey(secretKey: string): string {
   if (!secretKey.startsWith("ed25519:")) {
     throw new Error("expected ed25519 secret key");
   }
-  const seed = base58Decode(secretKey.slice("ed25519:".length));
+  const decoded = base58Decode(secretKey.slice("ed25519:".length));
+  const seed = decoded.length === 64 ? decoded.subarray(0, 32) : decoded;
   if (seed.length !== 32) throw new Error("invalid ed25519 seed length");
-  return ed25519PublicFromSeed(seed);
+  const publicKey = ed25519PublicFromSeed(seed);
+  if (decoded.length === 64 && nearKeyString(decoded.subarray(32)) !== publicKey) {
+    throw new Error("ed25519 secret does not match its public key");
+  }
+  return publicKey;
 }
 
 export function deriveKey<R extends KeyRole>(

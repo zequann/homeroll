@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminSigner, deriveKey } from "./keys";
+import { adminSigner, deriveKey, publicKeyFromSecretKey } from "./keys";
 
 describe("deriveKey", () => {
   it("matches a fixed HKDF vector", () => {
@@ -32,5 +32,18 @@ describe("adminSigner", () => {
     );
     expect(admin?.role).toBe("admin");
     expect(admin?.accountId).toBe("homeroll.testnet");
+  });
+});
+
+describe("publicKeyFromSecretKey", () => {
+  const seed = "ed25519:6En9pQ84iEKgcLgUGSkNQymtBQE8spHSca8PxsphQbPP";
+  const publicKey = "ed25519:G2wCFo1YhKh4JRqtGAWp5PadHbzMBsQyrngB6Do53iaw";
+  // Same key as the seed above, in the 64-byte form a NEAR wallet exports.
+  const walletExport =
+    "ed25519:2ZEyvUGaeuyQcTwYJSzJVnv4MvaWnGKPaxeuvgk7b5mcfY2gQLZCreTr5PeNhq1fy9m2FLh3uBWpdDycNKMQ5U51";
+
+  it("reads a 32-byte seed and a 64-byte wallet export as the same public key", () => {
+    expect(publicKeyFromSecretKey(seed)).toBe(publicKey);
+    expect(publicKeyFromSecretKey(walletExport)).toBe(publicKey);
   });
 });
