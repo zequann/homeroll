@@ -1,5 +1,5 @@
 import { type AccountId, isValidAccountId, workerAccountId } from "@homeroll/shared";
-import { buyerHash, invoiceHash } from "@homeroll/shared/invoice";
+import { buyerHash, type InvoiceDocumentInput, invoiceHash } from "@homeroll/shared/invoice";
 import { z } from "zod";
 import companyJson from "./company.json" with { type: "json" };
 import invoicesJson from "./invoices.json" with { type: "json" };
@@ -62,7 +62,14 @@ const invoiceSchema = z.object({
   expectedGrade: z.enum(["A", "B", "C", "D"]),
 });
 
-const timesheetSchema = z.array(z.object({ name: workerAccountName, amountSen: sen }));
+const timesheetSchema = z.array(
+  z.object({
+    name: workerAccountName,
+    baseSen: sen,
+    overtimeHours: z.number().int().nonnegative(),
+    overtimeRateSen: sen,
+  }),
+);
 
 const lenderSchema = z.object({
   name: z.string(),
@@ -79,7 +86,39 @@ export type Invoice = z.infer<typeof invoiceSchema> & {
   hash: string;
   buyerHash: string;
 };
-export type Timesheet = { accountId: AccountId; amountSen: number }[];
+export type Timesheet = {
+  accountId: AccountId;
+  baseSen: number;
+  overtimeHours: number;
+  overtimeRateSen: number;
+  /** Net wage (SPEC §8.2): base + overtime × rate, no statutory deductions. */
+  amountSen: number;
+}[];
+
+/** SPEC §8.2. Integer sen only. A wrong timesheet is the contract's to catch (R4), not this code's. */
+export function netWageSen(line: {
+  baseSen: number;
+  overtimeHours: number;
+  overtimeRateSen: number;
+}): number {
+  return line.baseSen + line.overtimeHours * line.overtimeRateSen;
+}
+
+/** The fields the invoice template prints for one fixture invoice (SPEC §9.6). */
+export function invoiceInput(f: Pick<Fixtures, "company">, i: Invoice): InvoiceDocumentInput {
+  return {
+    sellerName: f.company.name,
+    sellerTin: f.company.sellerTin,
+    buyerName: i.buyer,
+    buyerTin: i.buyerTin,
+    invoiceNo: i.number,
+    issueDate: i.issued,
+    dueDate: i.due,
+    amountSen: i.amountSen,
+    poNumber: i.poNumber,
+    myinvoisUuid: i.myinvoisUuid,
+  };
+}
 
 export interface Fixtures {
   root: AccountId;
@@ -87,9 +126,9 @@ export interface Fixtures {
   workers: Worker[];
   invoices: Invoice[];
   lender: z.infer<typeof lenderSchema> & { accountId: AccountId };
-  /** Net wages for October, one line per worker, in worker order. */
+  /** October's hours and net wages, one line per worker, in worker order. */
   timesheet: Timesheet;
-  /** The same timesheet with Hafiz's line inflated: stands in for the payroll agent's output. */
+  /** The same timesheet with 900 overtime hours on Hafiz's line (attack 02). */
   timesheetTampered: Timesheet;
 }
 
@@ -101,7 +140,10 @@ export function loadFixtures(root: AccountId): Fixtures {
   const toLines = (raw: unknown): Timesheet =>
     timesheetSchema.parse(raw).map((l) => ({
       accountId: workerAccountId(l.name, root),
-      amountSen: l.amountSen,
+      baseSen: l.baseSen,
+      overtimeHours: l.overtimeHours,
+      overtimeRateSen: l.overtimeRateSen,
+      amountSen: netWageSen(l),
     }));
 
   return {

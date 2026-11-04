@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { renderInvoiceText } from "@homeroll/shared/invoice";
+import { extractInvoiceText, renderInvoicePdf } from "@homeroll/shared/invoice-pdf";
 import { describe, expect, it } from "vitest";
-import { loadFixtures, workerName } from "./index";
+import { invoiceInput, loadFixtures, netWageSen, workerName } from "./index";
 
 const ROOT = "homeroll-test.testnet";
 const f = loadFixtures(ROOT);
@@ -29,7 +33,17 @@ describe("fixtures", () => {
       line.amountSen === f.timesheetTampered[i]?.amountSen ? [] : [i],
     );
     expect(changed).toEqual([4]);
-    expect(f.timesheetTampered[4]?.amountSen).toBe(1_924_000);
+    expect(f.timesheetTampered[4]?.overtimeHours).toBe(900);
+    // RM2,170 base + 900 hours × RM10 = RM11,170, far above Hafiz's RM2,900 wage cap
+    expect(f.timesheetTampered[4]?.amountSen).toBe(1_117_000);
+  });
+
+  it("computes net wage as base + overtime × rate, matching each worker's wage (SPEC §8.2)", () => {
+    for (const [i, line] of f.timesheet.entries()) {
+      expect(netWageSen(line)).toBe(line.baseSen + line.overtimeHours * line.overtimeRateSen);
+      expect(line.amountSen).toBe(f.workers[i]?.wageSen);
+    }
+    expect(f.timesheet.some((l) => l.overtimeHours > 0)).toBe(true);
   });
 
   it("keeps every wage at or under its wage cap", () => {
@@ -55,6 +69,26 @@ describe("fixtures", () => {
       ["INV-2026-1047", "C", 4_200_000],
       ["INV-2026-1050", "D", 3_680_000],
     ]);
+  });
+
+  it("commits PDFs that match the template, so nothing has drifted (SPEC §9.6)", async () => {
+    for (const invoice of f.invoices) {
+      const bytes = readFileSync(join(import.meta.dirname, "invoices", `${invoice.number}.pdf`));
+      expect(await extractInvoiceText(bytes)).toBe(renderInvoiceText(invoiceInput(f, invoice)));
+    }
+  });
+
+  it("commits the tampered INV-2026-1043 with the hidden instruction in white", async () => {
+    const invoice = f.invoices[0];
+    if (!invoice) throw new Error("no invoice");
+    const name = "INV-2026-1043-tampered.pdf";
+    const bytes = readFileSync(join(import.meta.dirname, "invoices", name));
+    expect(await extractInvoiceText(bytes)).toBe(
+      renderInvoiceText(invoiceInput(f, invoice), { tampered: true }),
+    );
+    expect(await renderInvoicePdf(invoiceInput(f, invoice), { tampered: true })).toEqual(
+      new Uint8Array(bytes),
+    );
   });
 
   it("gives every invoice a distinct registry hash", () => {
