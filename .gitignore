@@ -5,7 +5,7 @@ target/
 out/
 *.tsbuildinfo
 coverage/
-.vercel/
+.data/
 
 # Secrets: only .env.example is committed (CLAUDE.md rule 2)
 .env

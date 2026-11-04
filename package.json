@@ -10,6 +10,8 @@
     "dev": "pnpm --filter web dev",
     "build:contracts": "contracts/build.sh",
     "test:contracts": "cargo test --manifest-path contracts/Cargo.toml --workspace --locked",
+    "deploy:testnet": "node --experimental-strip-types scripts/deploy-testnet.ts",
+    "prove:relay": "node --experimental-strip-types scripts/prove-relay.ts",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "biome check .",

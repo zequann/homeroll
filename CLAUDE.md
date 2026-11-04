@@ -77,7 +77,8 @@ pnpm typecheck            # tsc in every package
 pnpm attacks              # (planned) run all attack scripts against a sandbox; exit 0 = all attacks failed as expected
 CHAIN_CLIENT=fake pnpm dev   # Next.js on fixture data, no chain needed
 pnpm dev                  # (planned) Next.js against testnet (needs .env.local)
-pnpm deploy:testnet       # (planned) deploy contracts to <root> sub-accounts
+pnpm deploy:testnet       # idempotent deploy of tusdc, factory, payroll, pool to testnet
+pnpm prove:relay          # POST a signed worker ft_transfer to /api/relay on a running server
 pnpm seed                 # (planned) synthetic company, 40 workers, invoices, lenders
 pnpm demo:reset           # (planned) fresh demo company on testnet, same steps as the Reset demo button (SPEC §9.6)
 pnpm demo                 # (planned, P1) local sandbox + deploy + seed + app, all mocks
