@@ -1,12 +1,14 @@
 import { homerollAccounts } from "@homeroll/shared";
 import type { RunFacts } from "@/app/owner/_components/run-state";
 import { getActivityLog } from "@/lib/activity";
+import { invoiceResults } from "@/lib/agents";
+import { type AdvanceOffer, type InvoiceAgentResult, offerFor } from "@/lib/agents/invoice-agent";
 import { getEnv } from "@/lib/env";
 import { truncateMiddle } from "@/lib/format";
-import { feeSen, formatUsdc, type Sen, sen, senToUnits, units, unitsToSen } from "@/lib/fx";
+import { formatUsdc, type Sen, sen, senToUnits, units, unitsToSen } from "@/lib/fx";
 import { nameOrAccount } from "@/lib/names";
 import { getChainClient, getFixtures } from "@/lib/near";
-import type { AccessKeyView, LineStatus } from "@/lib/near/client";
+import type { AccessKeyView, Grade, LineStatus } from "@/lib/near/client";
 import { period } from "@/lib/near/client";
 
 export type PayLineStatus =
@@ -31,11 +33,18 @@ export interface InvoiceRow {
   number: string;
   buyer: string;
   amountSen: Sen;
-  grade: "A" | "B" | "C" | "D";
-  advanceSen: Sen;
-  feeSen: Sen;
-  status: "Attested" | "Advanced" | "Settled" | "Declined";
-  declinedReason: string | null;
+  due: string;
+  /** "Unchecked" until the invoice agent attests it on the pool. */
+  status: "Unchecked" | "Attested" | "Advanced" | "Settled" | "Declined";
+  /** The grade the pool holds, once attested. */
+  grade: Grade | null;
+  /** The agent's last run on this invoice: checks, grade, what the model said. */
+  agent: InvoiceAgentResult | null;
+  /** The pool's offer for this grade (advance, fee, what each side gets). */
+  offer: AdvanceOffer | null;
+  /** Taken advance and fee, once advanced. */
+  advanceSen: Sen | null;
+  feeSen: Sen | null;
 }
 
 export interface KeyRow {
@@ -103,7 +112,7 @@ export async function loadOwnerView(): Promise<OwnerView> {
     chain.getRuns(employer, payrollPeriod),
     chain.getAccessKeys(employer),
     chain.getAccessKeys(accounts.agent),
-    ...fixtures.invoices.map((i) => chain.getInvoice(i.number)),
+    ...fixtures.invoices.map((i) => chain.getInvoice(i.hash)),
   ]);
   if (!employerView) throw new Error(`The chain does not know ${employer}`);
 
@@ -154,17 +163,21 @@ export async function loadOwnerView(): Promise<OwnerView> {
       : null,
   };
 
+  const results = invoiceResults();
   const invoices: InvoiceRow[] = fixtures.invoices.map((inv, i) => {
-    const advance = sen(Math.floor((inv.amountSen * inv.advanceBps) / 10_000));
+    const onChain = invoiceViews[i] ?? null;
+    const grade = onChain?.grade ?? null;
     return {
       number: inv.number,
       buyer: inv.buyer,
       amountSen: sen(inv.amountSen),
-      grade: inv.grade,
-      advanceSen: advance,
-      feeSen: feeSen(advance, inv.feeBps),
-      status: invoiceViews[i]?.status ?? "Attested",
-      declinedReason: inv.grade === "D" ? "Declined: no MyInvois record, no delivery order" : null,
+      due: inv.due,
+      status: onChain?.status ?? "Unchecked",
+      grade,
+      agent: results.get(inv.number) ?? null,
+      offer: grade ? offerFor(sen(inv.amountSen), grade) : null,
+      advanceSen: onChain?.advance ? unitsToSen(onChain.advance, "nearest") : null,
+      feeSen: onChain?.fee ? unitsToSen(onChain.fee, "nearest") : null,
     };
   });
 

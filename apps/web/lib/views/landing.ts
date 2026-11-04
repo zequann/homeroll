@@ -1,4 +1,5 @@
 import type { RunFacts } from "@/app/owner/_components/run-state";
+import { offerFor } from "@/lib/agents/invoice-agent";
 import { formatUsdc, type Sen, sen, senToUnits } from "@/lib/fx";
 import { getFixtures } from "@/lib/near";
 import type { PayLineRow } from "./owner";
@@ -10,10 +11,10 @@ import { WAGE_LABEL } from "./rahim";
  */
 export function loadLandingSnapshot() {
   const f = getFixtures();
-  const gradeA = f.invoices.find((i) => i.grade === "A");
+  const gradeA = f.invoices.find((i) => i.expectedGrade === "A");
   if (!gradeA) throw new Error("fixtures have no Grade A invoice");
   const total = sen(f.timesheet.reduce((s, l) => s + l.amountSen, 0));
-  const advance = sen(Math.floor((gradeA.amountSen * gradeA.advanceBps) / 10_000));
+  const advance = offerFor(sen(gradeA.amountSen), "A")?.advanceSen ?? sen(0);
   const treasury = sen(f.company.treasurySen + advance - total);
   const rahim = f.workers[0];
   if (!rahim) throw new Error("fixtures have no workers");
