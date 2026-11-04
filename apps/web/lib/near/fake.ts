@@ -34,6 +34,10 @@ export const FAKE_MAX_LINES_PER_CALL = 36;
 /** The demo floor (SPEC §7.3 initial config). */
 const MAX_LINES_PER_RUN = 40;
 const YOCTO_PER_NEAR = 10n ** 24n;
+/** R15: the demo floor (SPEC §7.3). */
+const MAX_PAYEES_PER_EMPLOYER = 40;
+/** R3: the 48-hour hold. */
+const HOLD_NS = 48n * 60n * 60n * 1_000_000_000n;
 /**
  * Pool's per-buyer limit (R11). The contract starts at 0 and the admin sets it, so this stands in
  * for what seed must set: at least the RM120,000 advance on INV-2026-1043.
@@ -268,6 +272,58 @@ export class FakeChainClient implements ChainClient {
     return { ok: true, txHash, value: toView(run, runId) };
   }
 
+  async addPayee(signer: Signer, accountId: AccountId, cap: Units): Promise<Tx<PayeeView>> {
+    const s = this.state;
+    const fail = (failure: TxFailure) =>
+      this.reject("add_payee", signer, this.accounts.payroll, null, failure);
+    const denied = this.ownerKeyOnly(signer);
+    if (denied) return fail(denied);
+    // R15: payee limit. A re-add replaces the payee and does not count again.
+    if (!s.payees.has(accountId) && s.payees.size >= MAX_PAYEES_PER_EMPLOYER) {
+      return fail(rejectCode("ERR_TOO_MANY_PAYEES"));
+    }
+    // R3: active at once while onboarding, otherwise after the hold
+    const nowNs = BigInt(this.now()) * 1_000_000n;
+    const activeFrom = s.onboarding ? nowNs : nowNs + HOLD_NS;
+    s.payees.set(accountId, { cap, activeFrom });
+    const txHash = this.nextTxHash();
+    this.log("add_payee", signer, this.accounts.payroll, null, txHash, null);
+    return { ok: true, txHash, value: { accountId, cap, activeFrom } };
+  }
+
+  async removePayee(signer: Signer, accountId: AccountId): Promise<Tx<null>> {
+    const s = this.state;
+    const fail = (failure: TxFailure) =>
+      this.reject("remove_payee", signer, this.accounts.payroll, null, failure);
+    const denied = this.ownerKeyOnly(signer);
+    if (denied) return fail(denied);
+    if (!s.payees.delete(accountId)) return fail(rejectCode("ERR_UNKNOWN_PAYEE"));
+    const txHash = this.nextTxHash();
+    this.log("remove_payee", signer, this.accounts.payroll, null, txHash, null);
+    return { ok: true, txHash, value: null };
+  }
+
+  async cancelRun(signer: Signer, runId: number): Promise<Tx<RunView>> {
+    const s = this.state;
+    const run = s.runs[runId];
+    const fail = (failure: TxFailure) =>
+      this.reject("cancel_run", signer, this.accounts.payroll, null, failure);
+    const denied = this.ownerKeyOnly(signer);
+    if (denied) return fail(denied);
+    if (!run) return fail(rejectCode("ERR_RUN_NOT_FOUND"));
+    const reserved = run.lines.filter((l) => l.status === "Reserved");
+    if (reserved.length === 0) return fail(rejectCode("ERR_RUN_COMPLETE"));
+    let returned = 0n;
+    for (const line of reserved) {
+      line.status = "Cancelled";
+      returned += line.amount;
+    }
+    s.treasury = units(s.treasury + returned);
+    const txHash = this.nextTxHash();
+    this.log("cancel_run", signer, this.accounts.payroll, units(returned), txHash, null);
+    return { ok: true, txHash, value: toView(run, runId) };
+  }
+
   async requestAdvance(
     signer: Signer,
     invoiceKey: string,
@@ -423,6 +479,15 @@ export class FakeChainClient implements ChainClient {
       balances: new Map(),
       txCounter: 0,
     };
+  }
+
+  /** Methods left off the payroll agent's key (SPEC §6): NEAR rejects it before our code runs. */
+  private ownerKeyOnly(signer: Signer): TxFailure | null {
+    if (signer.role === "payrollAgent") return { kind: "protocol", name: "MethodNameMismatch" };
+    if (signer.role !== "owner" || signer.accountId !== this.state.employer) {
+      return rejectCode("ERR_NOT_EMPLOYER");
+    }
+    return null;
   }
 
   private isEmployer(signer: Signer): boolean {

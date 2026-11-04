@@ -203,6 +203,99 @@ export function runChainClientSuite(
       });
     });
 
+    describe("owner-only payee and run methods", () => {
+      const NEW_PAYEE = "w-abc123";
+
+      it("adds a payee at once during onboarding, once the list has room (R3, R15)", async () => {
+        const { chain, owner, fixtures } = await setup();
+        const account = `${NEW_PAYEE}.${fixtures.root}`;
+        expectFailureText(await chain.addPayee(owner, account, units(1n)), "ERR_TOO_MANY_PAYEES");
+        const first = fixtures.workers[0]?.accountId ?? "";
+        expect((await chain.removePayee(owner, first)).ok).toBe(true);
+        const added = await chain.addPayee(owner, account, units(1n));
+        expect(added.ok && added.value.activeFrom > 0n).toBe(true);
+        expect((await chain.getPayees(fixtures.company.accountId)).length).toBe(40);
+      });
+
+      it("skips a payee removed before payment and returns the money (R3)", async () => {
+        const { chain, owner, agent, employer, fixtures, openPeriod, lines } = await setup();
+        await chain.requestAdvance(
+          owner,
+          key(fixtures, "INV-2026-1043"),
+          advanceUnits(fixtures, "INV-2026-1043"),
+        );
+        const submitted = await chain.submitRun(agent, openPeriod, lines);
+        if (!submitted.ok) throw new Error("submit_run failed");
+        const first = lines[0];
+        if (!first) throw new Error("no lines");
+        await chain.removePayee(owner, first.accountId);
+        const before = await chain.getEmployer(employer);
+        const paid = await chain.payRun(agent, submitted.value.runId);
+        expect(paid.ok && paid.value.lines[0]?.status).toBe("Skipped");
+        expect((await chain.getEmployer(employer))?.treasury).toBe(
+          (before?.treasury ?? 0n) + first.amount,
+        );
+      });
+
+      it("holds a payee added after the first run (R3)", async () => {
+        const { chain, owner, agent, fixtures, openPeriod, lines } = await setup();
+        await chain.requestAdvance(
+          owner,
+          key(fixtures, "INV-2026-1043"),
+          advanceUnits(fixtures, "INV-2026-1043"),
+        );
+        const first = lines[0];
+        if (!first) throw new Error("no lines");
+        const submitted = await chain.submitRun(agent, openPeriod, lines.slice(1));
+        if (!submitted.ok) throw new Error("submit_run failed");
+        await chain.removePayee(owner, first.accountId);
+        const back = await chain.addPayee(owner, first.accountId, units(first.amount));
+        expect(back.ok).toBe(true);
+        const line = [first];
+        const held = await chain.submitRun(agent, openPeriod, line);
+        expect(!held.ok && held.failure.kind === "contract" && held.failure.error.code).toBe(
+          "ERR_PAYEE_NOT_ACTIVE",
+        );
+      });
+
+      it("cancels reserved lines and returns their money", async () => {
+        const { chain, owner, agent, employer, fixtures, openPeriod, lines } = await setup();
+        await chain.requestAdvance(
+          owner,
+          key(fixtures, "INV-2026-1043"),
+          advanceUnits(fixtures, "INV-2026-1043"),
+        );
+        const before = await chain.getEmployer(employer);
+        const submitted = await chain.submitRun(agent, openPeriod, lines);
+        if (!submitted.ok) throw new Error("submit_run failed");
+        const cancelled = await chain.cancelRun(owner, submitted.value.runId);
+        expect(cancelled.ok && cancelled.value.status).toBe("Cancelled");
+        expect((await chain.getEmployer(employer))?.treasury).toBe(before?.treasury);
+        expectFailureText(await chain.cancelRun(owner, submitted.value.runId), "ERR_RUN_COMPLETE");
+        // A cancelled line does not hold the period, so the same people can be paid again
+        expect((await chain.submitRun(agent, openPeriod, lines)).ok).toBe(true);
+      });
+
+      it("refuses the payroll agent's key at the protocol on all three (SPEC §6)", async () => {
+        const { chain, agent, fixtures } = await setup();
+        const account = fixtures.workers[0]?.accountId ?? "";
+        const expected = { kind: "protocol", name: "MethodNameMismatch" };
+        for (const result of [
+          await chain.addPayee(agent, account, units(1n)),
+          await chain.removePayee(agent, account),
+          await chain.cancelRun(agent, 0),
+        ]) {
+          expect(!result.ok && result.failure).toEqual(expected);
+        }
+      });
+
+      it("reports an unknown payee and an unknown run", async () => {
+        const { chain, owner } = await setup();
+        expectFailureText(await chain.removePayee(owner, "nobody.testnet"), "ERR_UNKNOWN_PAYEE");
+        expectFailureText(await chain.cancelRun(owner, 99), "ERR_RUN_NOT_FOUND");
+      });
+    });
+
     describe("attest_invoice", () => {
       it("refuses a second registration of the same invoice (R7)", async () => {
         const { chain, fixtures } = await setup();

@@ -128,6 +128,12 @@ export interface ChainClient {
   // Calls
   submitRun(signer: Signer, period: Period, lines: PayLine[]): Promise<Tx<{ runId: number }>>;
   payRun(signer: Signer, runId: number): Promise<Tx<RunView>>;
+  /** Owner's key only. During onboarding a payee is active at once, after it the 48-hour hold applies (R3). */
+  addPayee(signer: Signer, accountId: AccountId, cap: Units): Promise<Tx<PayeeView>>;
+  /** Owner's key only. Their lines not yet sent are skipped by `pay_run`. */
+  removePayee(signer: Signer, accountId: AccountId): Promise<Tx<null>>;
+  /** Owner's key only. Every `Reserved` line becomes `Cancelled` and its money returns to the treasury. */
+  cancelRun(signer: Signer, runId: number): Promise<Tx<RunView>>;
   /** Invoice agent registers a checked invoice (R7, R10). */
   attestInvoice(signer: Signer, attestation: Attestation): Promise<Tx<InvoiceView>>;
   requestAdvance(signer: Signer, invoiceKey: string, amount: Units): Promise<Tx<InvoiceView>>;
