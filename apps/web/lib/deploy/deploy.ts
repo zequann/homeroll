@@ -7,7 +7,7 @@ import {
   homerollAccounts,
   workerAccountId,
 } from "@homeroll/shared";
-import { deriveKey, publicKeyFromSecretKey } from "../keys.ts";
+import { adminSigner, deriveKey, publicKeyFromSecretKey } from "../keys.ts";
 import type { AccountView, CodeHash } from "../near/rpc.ts";
 import { broadcastAdmin, storageRegistered, viewAccount, wasmCodeHash } from "../near/rpc.ts";
 
@@ -28,6 +28,7 @@ type AdminStepBody =
       create: boolean;
       fundYocto: bigint;
     }
+  | { kind: "replaceWasm"; account: AccountId; wasm: Uint8Array }
   | { kind: "createPlain"; account: AccountId; publicKey: string; fundYocto: bigint }
   | { kind: "topUp"; account: AccountId; fundYocto: bigint }
   | { kind: "storageDeposit"; account: AccountId; tusdc: AccountId; depositYocto: bigint }
@@ -247,6 +248,38 @@ function plainAccountSteps(
     };
   }
   return { steps: [] };
+}
+
+export type ReplaceWasmStep = {
+  readonly kind: "replaceWasm";
+  readonly account: AccountId;
+  readonly wasm: Uint8Array;
+};
+
+export function planPayrollWasmSwap(
+  account: AccountId,
+  snapshot: AccountSnapshot,
+  wasm: Uint8Array,
+  adminPublicKey: string,
+):
+  | { ok: true; step: ReplaceWasmStep | null }
+  | { ok: false; reason: "absent" }
+  | { ok: false; refusal: ClobberRefusal } {
+  if (snapshot.kind === "absent") return { ok: false, reason: "absent" };
+  const expected = wasmCodeHash(wasm);
+  if (snapshot.codeHash === expected) return { ok: true, step: null };
+  if (!snapshot.fullAccessKeys.includes(adminPublicKey)) {
+    return {
+      ok: false,
+      refusal: {
+        account,
+        reason: "foreign_key",
+        observedCodeHash: snapshot.codeHash,
+        expectedCodeHash: expected,
+      },
+    };
+  }
+  return { ok: true, step: { kind: "replaceWasm", account, wasm } };
 }
 
 export function reconcile(
@@ -521,6 +554,51 @@ export function planCreateWorker(
     publicKey,
     factory: accounts.factory,
   }) as ProofStep;
+}
+
+/** Deploys the built payroll wasm onto the existing account. Does not call `new`. */
+export async function replaceDeployedPayroll(
+  input: DeployInput,
+): Promise<
+  | { outcome: "unchanged" }
+  | { outcome: "replaced"; txHash: string }
+  | { outcome: "blocked"; reason: "admin_key_missing" | "wasm_missing" | "absent" }
+  | { outcome: "refused"; refusal: ClobberRefusal }
+> {
+  if (input.adminSecretKey === null) {
+    return { outcome: "blocked", reason: "admin_key_missing" };
+  }
+  let wasm: Uint8Array;
+  try {
+    wasm = readFileSync(join(REPO_ROOT, contractWasmPath("payroll")));
+  } catch {
+    return { outcome: "blocked", reason: "wasm_missing" };
+  }
+  const accounts = homerollAccounts(input.root);
+  const view = await viewAccount(accounts.payroll);
+  const snapshot: AccountSnapshot = view.exists
+    ? {
+        kind: "present",
+        codeHash: view.codeHash,
+        balanceYocto: view.balanceYocto,
+        fullAccessKeys: view.fullAccessKeys,
+      }
+    : { kind: "absent" };
+  const plan = planPayrollWasmSwap(
+    accounts.payroll,
+    snapshot,
+    wasm,
+    publicKeyFromSecretKey(input.adminSecretKey),
+  );
+  if (!plan.ok) {
+    if ("refusal" in plan) return { outcome: "refused", refusal: plan.refusal };
+    return { outcome: "blocked", reason: "absent" };
+  }
+  if (plan.step === null) return { outcome: "unchanged" };
+  const admin = adminSigner(input.root, input.adminSecretKey);
+  if (!admin) return { outcome: "blocked", reason: "admin_key_missing" };
+  const sent = await broadcastAdmin(adminStep(plan.step), admin, "FINAL");
+  return { outcome: "replaced", txHash: sent.txHash };
 }
 
 export function planMint(accounts: HomerollAccounts, worker: AccountId, amount: bigint): ProofStep {

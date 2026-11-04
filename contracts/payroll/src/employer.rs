@@ -6,7 +6,7 @@ use homeroll_common::errors::{
     ERR_TOO_MANY_LINES, ERR_TOO_MANY_PAYEES,
 };
 use homeroll_common::period::Period;
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{U64, U128};
 use near_sdk::store::{IterableMap, LookupMap, Vector};
 use near_sdk::{AccountId, near};
 
@@ -24,7 +24,7 @@ pub(crate) struct Employer {
     buffer: u128,
     /// True until the first run is submitted. While true, new payees are active at once (R3).
     onboarding: bool,
-    /// Iterable for a later `get_payees` and for `payee_count`.
+    /// Iterable so `get_payees` can list every payee, and so `payee_count` is O(1).
     payees: IterableMap<AccountId, Payee>,
     /// Append-only. The run id is the index, so the next id is `runs.len()`.
     runs: Vector<Run>,
@@ -86,6 +86,15 @@ pub struct EmployerView {
     pub buffer: U128,
     pub onboarding: bool,
     pub payee_count: u32,
+}
+
+/// `get_payees` JSON. `active_from` is `U64` because nanoseconds do not fit in a JS number.
+#[near(serializers = [json])]
+#[derive(Debug, PartialEq, Eq)]
+pub struct PayeeView {
+    pub account_id: AccountId,
+    pub cap: U128,
+    pub active_from: U64,
 }
 
 impl Employer {
@@ -402,6 +411,18 @@ impl Employer {
             onboarding: self.onboarding,
             payee_count: self.payees.len(),
         }
+    }
+
+    /// The account id is the map key. `Payee` does not store it.
+    pub(crate) fn payee_views(&self) -> Vec<PayeeView> {
+        self.payees
+            .iter()
+            .map(|(account_id, payee)| PayeeView {
+                account_id: account_id.clone(),
+                cap: U128(payee.cap),
+                active_from: U64(payee.active_from),
+            })
+            .collect()
     }
 
     /// Looks up `period` as stored. Keys are canonical, so other text finds nothing.

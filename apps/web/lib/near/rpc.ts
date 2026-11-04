@@ -338,6 +338,19 @@ export async function broadcastAdmin(
       });
       return { txHash: outcome.transaction_outcome.id };
     }
+    case "replaceWasm": {
+      // The parent created this account and added the admin key. Only that key,
+      // signing as the account itself, can replace the code. No `new` call.
+      const outcome = await signingAccount({
+        accountId: step.account,
+        secretKey: admin.secretKey,
+      }).signAndSendTransaction({
+        receiverId: step.account,
+        actions: [actions.deployContract(step.wasm)],
+        waitUntil,
+      });
+      return { txHash: outcome.transaction_outcome.id };
+    }
     case "createWorker": {
       const outcome = await account.signAndSendTransaction({
         receiverId: step.factory,
@@ -514,6 +527,23 @@ export async function callMethods(
     waitUntil: "FINAL",
   });
   return { txHash: outcome.transaction_outcome.id };
+}
+
+export async function callMethod(
+  signer: { accountId: string; secretKey: string },
+  receiverId: string,
+  call: { method: string; args: Record<string, unknown>; gas: bigint; depositYocto: bigint },
+): Promise<{ txHash: string }> {
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId,
+    actions: [actions.functionCall(call.method, call.args, call.gas, call.depositYocto)],
+    waitUntil: "FINAL",
+  });
+  return { txHash: outcome.transaction_outcome.id };
+}
+
+export async function accessKeyList(accountId: string): Promise<unknown> {
+  return provider().viewAccessKeyList({ accountId });
 }
 
 export function wasmCodeHash(wasm: Uint8Array): CodeHash {

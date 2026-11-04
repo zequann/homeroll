@@ -6,6 +6,7 @@ import {
   adminStep,
   type ChainSnapshot,
   contractWasmPath,
+  planPayrollWasmSwap,
   readDeployEnv,
   reconcile,
   rootCanPay,
@@ -54,6 +55,37 @@ const emptySnapshot = (): ChainSnapshot => ({
   offramp: { kind: "absent" },
   payoutRegistered: false,
   offrampRegistered: false,
+});
+
+describe("planPayrollWasmSwap", () => {
+  it("returns a replace step without init args when code differs", () => {
+    const snap = emptySnapshot();
+    snap.payroll = {
+      kind: "present",
+      codeHash: "deadbeef" as CodeHash,
+      balanceYocto: 10n ** 24n,
+      fullAccessKeys: [ADMIN_PK],
+    };
+    const plan = planPayrollWasmSwap(accounts.payroll, snap.payroll, wasm.payroll, ADMIN_PK);
+    expect(plan).toEqual({
+      ok: true,
+      step: { kind: "replaceWasm", account: accounts.payroll, wasm: wasm.payroll },
+    });
+  });
+
+  it("returns null when the wasm hash already matches", () => {
+    const snap = emptySnapshot();
+    snap.payroll = {
+      kind: "present",
+      codeHash: hashes.payroll,
+      balanceYocto: 10n ** 24n,
+      fullAccessKeys: [ADMIN_PK],
+    };
+    expect(planPayrollWasmSwap(accounts.payroll, snap.payroll, wasm.payroll, ADMIN_PK)).toEqual({
+      ok: true,
+      step: null,
+    });
+  });
 });
 
 describe("reconcile", () => {
@@ -130,7 +162,7 @@ describe("reconcile", () => {
     expect(plan.steps).toEqual([]);
   });
 
-  it("refuses a foreign code hash with no steps", () => {
+  it("refuses a foreign code hash on deploy reconcile with no steps", () => {
     const snap = emptySnapshot();
     snap.tusdc = {
       kind: "present",

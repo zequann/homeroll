@@ -8,6 +8,8 @@
  * - Fees round up ("up").
  */
 
+import { type Grade, GRADE_TERMS, HARD_MAX_ADVANCE_BPS } from "@homeroll/shared";
+
 /** Demo FX constants (SPEC §10), labelled as demo wherever they are shown. */
 export const DEMO_SEN_PER_USDC = 420; // RM4.20 per USDC
 const TAKA_PER_RM_MILLI = 28_600; // ৳28.60 per RM, in thousandths
@@ -27,6 +29,11 @@ export function sen(value: number): Sen {
 export function units(value: bigint): Units {
   if (value < 0n) throw new Error(`Units cannot be negative, got ${value}`);
   return value as Units;
+}
+
+export function maxAdvanceUnits(amount: Units, grade: Grade): Units {
+  const bps = Math.min(GRADE_TERMS[grade].maxAdvanceBps, HARD_MAX_ADVANCE_BPS);
+  return units((amount * BigInt(bps)) / 10_000n);
 }
 
 // 1 USDC = 420 sen = 1_000_000 units, so units = sen * 50_000 / 21.
