@@ -1,7 +1,7 @@
 import { homerollAccounts, workerAccountId } from "@homeroll/shared";
-import { type DeployInput, deployHomeroll, planCreateWorker, planMint } from "../deploy/deploy";
-import { type Units } from "../fx";
-import { deriveKey } from "../keys";
+import { type DeployInput, deployHomeroll, planCreateWorker, planMint } from "../deploy/deploy.ts";
+import { type Units } from "../fx/index.ts";
+import { deriveKey } from "../keys.ts";
 import {
   accessKey,
   blockHeight,
@@ -10,7 +10,7 @@ import {
   ftBalanceOf,
   signDelegate,
   viewAccount,
-} from "../near/rpc";
+} from "../near/rpc.ts";
 
 export type ProofInput = {
   network: "testnet";

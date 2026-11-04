@@ -16,7 +16,7 @@ import {
   SCHEMA,
 } from "near-api-js";
 import type { AdminStep } from "../deploy/deploy";
-import { type Units, units } from "../fx";
+import { type Units, units } from "../fx/index.ts";
 import type { AdminSigner, RelayerSigner, WorkerSigner } from "../keys";
 import type { PayableBytes } from "../relay/relay";
 
@@ -73,6 +73,11 @@ function provider(): JsonRpcProvider {
 const ZERO_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 const GAS_DEPLOY_NEW = 200n * 1_000_000_000_000n;
 const GAS_CREATE_WORKER = 100n * 1_000_000_000_000n;
+const GAS_FUNCTION_CALL = 30n * 1_000_000_000_000n;
+
+/** 40 payees would be one transaction. Callers send at most this many. */
+// 30 Tgas each. Ten calls would equal the 300 Tgas transaction cap.
+export const MAX_CALLS_PER_TRANSACTION = 8;
 
 function mapActions(actionsList: DelegateAction["actions"]): DecodedAction[] {
   return actionsList.map((action) => {
@@ -80,7 +85,8 @@ function mapActions(actionsList: DelegateAction["actions"]): DecodedAction[] {
       return {
         kind: "functionCall" as const,
         method: action.functionCall.methodName,
-        args: action.functionCall.args,
+        // borsh returns a plain Array. TextDecoder only accepts a typed array.
+        args: Uint8Array.from(action.functionCall.args),
         gas: action.functionCall.gas,
         depositYocto: action.functionCall.deposit,
       };
@@ -243,19 +249,23 @@ export async function submitDelegate(
   return { txHash: outcome.transaction_outcome.id };
 }
 
-function adminAccount(admin: AdminSigner): Account {
+function signingAccount(signer: {
+  readonly accountId: string;
+  readonly secretKey: string;
+}): Account {
   return new Account(
-    admin.accountId,
+    signer.accountId,
     provider(),
-    KeyPairSigner.fromSecretKey(admin.secretKey as KeyPairString),
+    KeyPairSigner.fromSecretKey(signer.secretKey as KeyPairString),
   );
 }
 
 export async function broadcastAdmin(
   step: AdminStep,
   admin: AdminSigner,
+  waitUntil: "INCLUDED" | "FINAL" = "INCLUDED",
 ): Promise<{ txHash: string }> {
-  const account = adminAccount(admin);
+  const account = signingAccount(admin);
   switch (step.kind) {
     case "deploy": {
       const adminPub = await KeyPairSigner.fromSecretKey(
@@ -274,7 +284,7 @@ export async function broadcastAdmin(
       const outcome = await account.signAndSendTransaction({
         receiverId: step.account,
         actions: deployActions,
-        waitUntil: "INCLUDED",
+        waitUntil,
       });
       return { txHash: outcome.transaction_outcome.id };
     }
@@ -286,7 +296,7 @@ export async function broadcastAdmin(
           actions.addFullAccessKey(PublicKey.from(step.publicKey)),
           actions.transfer(step.fundYocto),
         ],
-        waitUntil: "INCLUDED",
+        waitUntil,
       });
       return { txHash: outcome.transaction_outcome.id };
     }
@@ -294,7 +304,7 @@ export async function broadcastAdmin(
       const outcome = await account.signAndSendTransaction({
         receiverId: step.account,
         actions: [actions.transfer(step.fundYocto)],
-        waitUntil: "INCLUDED",
+        waitUntil,
       });
       return { txHash: outcome.transaction_outcome.id };
     }
@@ -309,7 +319,7 @@ export async function broadcastAdmin(
             step.depositYocto,
           ),
         ],
-        waitUntil: "INCLUDED",
+        waitUntil,
       });
       return { txHash: outcome.transaction_outcome.id };
     }
@@ -324,7 +334,7 @@ export async function broadcastAdmin(
             0n,
           ),
         ],
-        waitUntil: "INCLUDED",
+        waitUntil,
       });
       return { txHash: outcome.transaction_outcome.id };
     }
@@ -339,11 +349,171 @@ export async function broadcastAdmin(
             0n,
           ),
         ],
-        waitUntil: "INCLUDED",
+        waitUntil,
       });
       return { txHash: outcome.transaction_outcome.id };
     }
   }
+}
+
+export type ListedKey =
+  | { readonly kind: "fullAccess"; readonly publicKey: string }
+  | {
+      readonly kind: "functionCall";
+      readonly publicKey: string;
+      readonly receiverId: string;
+      readonly methodNames: readonly string[];
+      readonly allowanceYocto: bigint;
+    };
+
+export type ListedAccount =
+  | { readonly kind: "absent" }
+  | {
+      readonly kind: "present";
+      readonly balanceYocto: bigint;
+      readonly keys: readonly ListedKey[];
+    };
+
+type FunctionCallKeyFields = {
+  readonly publicKey: string;
+  readonly receiverId: string;
+  readonly methodNames: readonly string[];
+  readonly allowanceYocto: bigint;
+};
+
+type TxSigner = { readonly accountId: string; readonly secretKey: string };
+
+function stringList(value: unknown): readonly string[] | null {
+  if (!Array.isArray(value)) return null;
+  const names: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    names.push(item);
+  }
+  return names;
+}
+
+function allowanceYocto(value: unknown): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
+  return 0n;
+}
+
+function functionCallFields(
+  permission: unknown,
+): Omit<FunctionCallKeyFields, "publicKey"> | "full" {
+  // An unreadable permission is reported as full access so a foreign key is refused.
+  if (permission === "FullAccess") return "full";
+  if (typeof permission !== "object" || permission === null) return "full";
+  if ("FullAccess" in permission || "GasKeyFullAccess" in permission) return "full";
+  const record = permission as Record<string, unknown>;
+  const inner = record.FunctionCall ?? record.GasKeyFunctionCall;
+  if (typeof inner !== "object" || inner === null) return "full";
+  const fields = inner as Record<string, unknown>;
+  const receiverId = fields.receiver_id ?? fields.receiverId;
+  const methodNames = stringList(fields.method_names ?? fields.methodNames);
+  if (typeof receiverId !== "string" || receiverId === "" || methodNames === null) return "full";
+  return { receiverId, methodNames, allowanceYocto: allowanceYocto(fields.allowance) };
+}
+
+function parseListedKey(item: unknown): ListedKey {
+  if (typeof item !== "object" || item === null)
+    throw new Error("access key entry is not an object");
+  const row = item as { public_key?: unknown; access_key?: { permission?: unknown } };
+  if (typeof row.public_key !== "string" || row.public_key === "") {
+    throw new Error("access key entry has no public key");
+  }
+  const fields = functionCallFields(row.access_key?.permission);
+  if (fields === "full") return { kind: "fullAccess", publicKey: row.public_key };
+  return { kind: "functionCall", publicKey: row.public_key, ...fields };
+}
+
+function parseListedKeys(raw: unknown): readonly ListedKey[] {
+  if (typeof raw !== "object" || raw === null || !("keys" in raw) || !Array.isArray(raw.keys)) {
+    throw new Error("access key list is missing keys");
+  }
+  return raw.keys.map(parseListedKey);
+}
+
+/** Balance plus every access key. `viewAccount` keeps full-access keys only. */
+export async function viewAccountState(accountId: string): Promise<ListedAccount> {
+  const account = await viewAccount(accountId);
+  if (!account.exists) return { kind: "absent" };
+  const listed = await provider().viewAccessKeyList({ accountId });
+  return {
+    kind: "present",
+    balanceYocto: account.balanceYocto,
+    keys: parseListedKeys(listed),
+  };
+}
+
+export async function viewFunction(
+  contractId: string,
+  method: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  return provider().callFunction({ contractId, method, args });
+}
+
+function functionCallKeyAction(key: FunctionCallKeyFields) {
+  return actions.addFunctionCallAccessKey(
+    PublicKey.from(key.publicKey),
+    key.receiverId,
+    [...key.methodNames],
+    key.allowanceYocto,
+  );
+}
+
+/**
+ * Creates the account with this function-call key as its only key, then funds it.
+ * Method names come from `key.methodNames`.
+ */
+export async function createAccountWithFunctionCallKey(
+  signer: TxSigner,
+  accountId: string,
+  key: FunctionCallKeyFields,
+  fundYocto: bigint,
+): Promise<{ txHash: string }> {
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId: accountId,
+    actions: [actions.createAccount(), functionCallKeyAction(key), actions.transfer(fundYocto)],
+    waitUntil: "FINAL",
+  });
+  return { txHash: outcome.transaction_outcome.id };
+}
+
+/** Adds one function-call key. Method names come from `key.methodNames`. */
+export async function addFunctionCallAccessKey(
+  signer: TxSigner,
+  accountId: string,
+  key: FunctionCallKeyFields,
+): Promise<{ txHash: string }> {
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId: accountId,
+    actions: [functionCallKeyAction(key)],
+    waitUntil: "FINAL",
+  });
+  return { txHash: outcome.transaction_outcome.id };
+}
+
+/** Contract calls with no attached deposit. At most `MAX_CALLS_PER_TRANSACTION` calls. */
+export async function callMethods(
+  signer: TxSigner,
+  receiverId: string,
+  calls: readonly { readonly method: string; readonly args: Record<string, unknown> }[],
+): Promise<{ txHash: string }> {
+  if (calls.length === 0) throw new Error("no calls");
+  if (calls.length > MAX_CALLS_PER_TRANSACTION) {
+    throw new Error(`at most ${MAX_CALLS_PER_TRANSACTION} calls per transaction`);
+  }
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId,
+    actions: calls.map((call) =>
+      actions.functionCall(call.method, call.args, GAS_FUNCTION_CALL, 0n),
+    ),
+    waitUntil: "FINAL",
+  });
+  return { txHash: outcome.transaction_outcome.id };
 }
 
 export function wasmCodeHash(wasm: Uint8Array): CodeHash {

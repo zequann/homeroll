@@ -7,9 +7,9 @@ import {
   homerollAccounts,
   workerAccountId,
 } from "@homeroll/shared";
-import { deriveKey, publicKeyFromSecretKey } from "../keys";
-import type { AccountView, CodeHash } from "../near/rpc";
-import { broadcastAdmin, storageRegistered, viewAccount, wasmCodeHash } from "../near/rpc";
+import { deriveKey, publicKeyFromSecretKey } from "../keys.ts";
+import type { AccountView, CodeHash } from "../near/rpc.ts";
+import { broadcastAdmin, storageRegistered, viewAccount, wasmCodeHash } from "../near/rpc.ts";
 
 const adminBrand: unique symbol = Symbol("admin");
 

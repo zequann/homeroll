@@ -1,11 +1,11 @@
 import { type AccountId, isValidAccountId, workerAccountId } from "@homeroll/shared";
 import { z } from "zod";
-import companyJson from "./company.json";
-import invoicesJson from "./invoices.json";
-import lendersJson from "./lenders.json";
-import timesheetJson from "./timesheets/2026-10.json";
-import tamperedJson from "./timesheets/2026-10-tampered.json";
-import workersJson from "./workers.json";
+import companyJson from "./company.json" with { type: "json" };
+import invoicesJson from "./invoices.json" with { type: "json" };
+import lendersJson from "./lenders.json" with { type: "json" };
+import timesheetJson from "./timesheets/2026-10.json" with { type: "json" };
+import tamperedJson from "./timesheets/2026-10-tampered.json" with { type: "json" };
+import workersJson from "./workers.json" with { type: "json" };
 
 // All values here are synthetic (CLAUDE.md rule 1). Money is integer sen (SPEC §10).
 

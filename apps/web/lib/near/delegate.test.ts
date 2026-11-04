@@ -38,5 +38,12 @@ describe("signed delegate round trip", () => {
         gas: 15n * 1_000_000_000_000n,
       }),
     ]);
+    const call = decoded.delegate.actions[0];
+    if (!call || call.kind !== "functionCall") return;
+    expect(call.args).toBeInstanceOf(Uint8Array);
+    expect(JSON.parse(new TextDecoder().decode(call.args))).toEqual({
+      receiver_id: `payout.${ROOT}`,
+      amount: "1000000",
+    });
   });
 });
