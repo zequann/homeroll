@@ -27,6 +27,9 @@ export function Invoices({ rows, connected }: { rows: InvoiceRow[]; connected: b
                 <div className="ink-2">
                   <Money value={inv.amountSen} /> · due {inv.due}
                 </div>
+                <a className="t-caption" href={`/api/invoices/${inv.number}`}>
+                  Download PDF
+                </a>
               </div>
               <div className={styles.invoiceGrade}>
                 <Summary row={inv} />
