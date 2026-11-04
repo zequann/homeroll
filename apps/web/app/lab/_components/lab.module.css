@@ -68,3 +68,16 @@
 .placeholders > * + * {
   border-top: 0.5px solid var(--ink-4);
 }
+.failures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding-left: var(--s-4);
+  list-style: disc;
+  color: var(--ink-2);
+}
