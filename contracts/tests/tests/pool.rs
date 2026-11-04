@@ -4,10 +4,10 @@ use homeroll_common::errors::{
     ERR_ADVANCE_ABOVE_CAP, ERR_BUYER_EXPOSURE, ERR_DEPOSIT_TOO_SMALL,
     ERR_INVOICE_ALREADY_REGISTERED, ERR_NOT_ADMIN, ERR_NOT_AGENT, ERR_NOT_SETTLER,
 };
-use homeroll_contract_tests::{assert_fails_with, Contract, Env};
+use homeroll_contract_tests::{Contract, Env, assert_fails_with};
 use near_api::types::transaction::result::TransactionResult;
 use near_api::{AccountId, NearToken};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use testresult::TestResult;
 
 const NO_DEPOSIT: NearToken = NearToken::from_yoctonear(0);
