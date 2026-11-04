@@ -29,6 +29,8 @@ export interface PayLineRow {
   name: string;
   role: string;
   netSen: Sen;
+  /** Overtime hours in the net wage, from the timesheet (SPEC §8.2). */
+  overtimeHours?: number;
   capSen: Sen;
   status: PayLineStatus;
   /** A failed, skipped or cancelled line that can be paid in a new one-line run (SPEC §7.3). */
@@ -165,6 +167,7 @@ export async function loadOwnerView(): Promise<OwnerView> {
       name: nameOrAccount(w.accountId),
       role: w.role,
       netSen: sen(line?.amountSen ?? 0),
+      overtimeHours: line?.overtimeHours ?? 0,
       capSen: sen(w.capSen),
       status,
       missed: unpaid && reason !== "not-a-payee",

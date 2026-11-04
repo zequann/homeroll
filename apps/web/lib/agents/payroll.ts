@@ -6,7 +6,7 @@ import type { ChainClient, PayLine, Period, RunView } from "@/lib/near/client";
 /**
  * Payroll agent (SPEC §8.2): turns the period's timesheet into the pay lines it proposes. It leaves
  * out people the contract would refuse, so one removed worker does not block 39 others; the
- * contract still checks whatever is sent. Timesheets hold net wages for now, with no hours maths.
+ * contract still checks whatever is sent. Net wage is base + overtime × rate, from the timesheet.
  */
 
 export type ExcludedReason = "not-a-payee" | "on-hold";

@@ -70,6 +70,9 @@ export function PayLines({
                 <td className="ink-2">{row.role}</td>
                 <td className={styles.num}>
                   <Money value={row.netSen} />
+                  {row.overtimeHours ? (
+                    <div className="t-caption ink-3">incl. {row.overtimeHours} h overtime</div>
+                  ) : null}
                 </td>
                 <td className={`${styles.num} ink-2`}>
                   <Money value={row.capSen} />

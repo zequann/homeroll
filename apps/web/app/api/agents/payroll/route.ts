@@ -14,6 +14,7 @@ export async function POST(): Promise<Response> {
   if (!session.connected) return Response.json({ reason: "not_connected" }, { status: 401 });
 
   const fixtures = getFixtures();
+  const hours = new Map(fixtures.timesheet.map((l) => [l.accountId, l]));
   const proposal = await proposePayroll(
     getChainClient(),
     fixtures,
@@ -27,6 +28,9 @@ export async function POST(): Promise<Response> {
       accountId: l.accountId,
       name: nameOrAccount(l.accountId),
       amountSen: unitsToSen(l.amount, "nearest"),
+      baseSen: hours.get(l.accountId)?.baseSen,
+      overtimeHours: hours.get(l.accountId)?.overtimeHours,
+      overtimeRateSen: hours.get(l.accountId)?.overtimeRateSen,
     })),
     alreadyHeld: proposal.held,
     excluded: proposal.excluded.map((e) => ({ ...e, name: nameOrAccount(e.accountId) })),
