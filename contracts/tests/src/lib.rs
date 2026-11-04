@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use cargo_near_build::{BuildOpts, camino::Utf8PathBuf};
 use homeroll_common::period::Period;
 use near_api::types::transaction::result::TransactionResult;
-use near_api::{Account, AccountId, Chain, NearToken, NetworkConfig, PublicKey, Signer};
+use near_api::{Account, AccountId, Chain, NearGas, NearToken, NetworkConfig, PublicKey, Signer};
 use near_sandbox::{
     Sandbox,
     config::{DEFAULT_GENESIS_ACCOUNT_PRIVATE_KEY, DEFAULT_GENESIS_ACCOUNT_PUBLIC_KEY},
@@ -141,6 +141,9 @@ impl Env {
 
     /// Calls `method` on `contract`, signed by `signer`, with 300 Tgas. Check the result
     /// with `assert_success()` or [`assert_fails_with`].
+    ///
+    /// `near-api`'s `max_gas` is 300 Tgas. The live protocol `gas_limit` is 1000 Tgas.
+    /// A measurement that must use the protocol ceiling calls [`Self::call_with_gas`].
     pub async fn call(
         &self,
         signer: &AccountId,
@@ -149,10 +152,30 @@ impl Env {
         args: Value,
         deposit: NearToken,
     ) -> TestResult<TransactionResult> {
+        self.call_with_gas(
+            signer,
+            contract,
+            method,
+            args,
+            deposit,
+            NearGas::from_tgas(300),
+        )
+        .await
+    }
+
+    pub async fn call_with_gas(
+        &self,
+        signer: &AccountId,
+        contract: &AccountId,
+        method: &str,
+        args: Value,
+        deposit: NearToken,
+        gas: NearGas,
+    ) -> TestResult<TransactionResult> {
         Ok(near_api::Contract(contract.clone())
             .call_function(method, args)
             .transaction()
-            .max_gas()
+            .gas(gas)
             .deposit(deposit)
             .with_signer(signer.clone(), self.signer.clone())
             .send_to(&self.network)

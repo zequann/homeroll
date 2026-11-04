@@ -6,7 +6,7 @@ use homeroll_common::errors::{
 };
 use homeroll_contract_tests::{Contract, Env, assert_fails_with};
 use near_api::types::transaction::result::TransactionResult;
-use near_api::{AccountId, NearToken};
+use near_api::{AccountId, NearGas, NearToken};
 use serde_json::{Value, json};
 use testresult::TestResult;
 
@@ -579,5 +579,141 @@ async fn treasury_credit_keeps_tokens_on_the_payroll_account() -> TestResult {
     let treasury_u128: u128 = treasury["treasury"].as_str().unwrap().parse()?;
     let balance_u128: u128 = payroll_balance.as_str().unwrap().parse()?;
     assert!(balance_u128 >= treasury_u128);
+    Ok(())
+}
+
+fn status_counts(runs: &Value) -> (usize, usize) {
+    let mut paid = 0usize;
+    let mut reserved = 0usize;
+    for line in runs[0]["lines"].as_array().expect("lines") {
+        match line["status"].as_str() {
+            Some("Paid") => paid += 1,
+            Some("Reserved") => reserved += 1,
+            status => panic!("line status {status:?} is neither Paid nor Reserved"),
+        }
+    }
+    (paid, reserved)
+}
+
+/// Q3. A 40-line run pays 36 lines, then the rest. One call that tries 37 or more
+/// panics inside the 1000 Tgas protocol limit, so the first call must stay at 36.
+#[tokio::test]
+async fn a_forty_line_run_pays_in_two_calls_under_the_gas_ceiling() -> TestResult {
+    let line_count: usize = 40;
+    let lines_per_call: usize = 36;
+    let line_amount: u128 = 1_000_000;
+    let ceiling: u64 = 900_000_000_000_000;
+    let (env, tusdc, payroll, employer, first) = payroll_payout_fixture().await?;
+    let bounds = env
+        .view(&tusdc, "storage_balance_bounds", json!({}))
+        .await?;
+    let storage: NearToken = serde_json::from_value(bounds["min"].clone())?;
+    env.call(
+        &employer,
+        &tusdc,
+        "storage_deposit",
+        json!({ "account_id": first }),
+        storage,
+    )
+    .await?
+    .assert_success();
+    let mut workers = vec![first];
+    for index in 1..line_count {
+        let worker: AccountId = format!("w-{index:06}.{}", env.root).parse()?;
+        env.call(
+            &employer,
+            &tusdc,
+            "storage_deposit",
+            json!({ "account_id": worker }),
+            storage,
+        )
+        .await?
+        .assert_success();
+        env.call(
+            &employer,
+            &payroll,
+            "add_payee",
+            json!({ "account_id": worker, "cap": CAP.to_string() }),
+            NO_DEPOSIT,
+        )
+        .await?
+        .assert_success();
+        workers.push(worker);
+    }
+    let total = line_amount * line_count as u128;
+    fund_treasury_via_transfer_call(&env, &tusdc, &payroll, &employer, total).await?;
+    let period = env.open_period().await?;
+    let lines: Vec<_> = workers
+        .iter()
+        .map(|worker| json!({ "account_id": worker, "amount": line_amount.to_string() }))
+        .collect();
+    let submitted = env
+        .call(
+            &employer,
+            &payroll,
+            "submit_run",
+            json!({ "period": period, "lines": lines }),
+            NO_DEPOSIT,
+        )
+        .await?;
+    let submit_gas = submitted
+        .clone()
+        .into_full()
+        .expect("submit_run execution")
+        .total_gas_burnt
+        .as_gas();
+    submitted.assert_success();
+    assert!(submit_gas <= ceiling, "submit_run burnt {submit_gas} gas");
+
+    let first_pay = env
+        .call_with_gas(
+            &employer,
+            &payroll,
+            "pay_run",
+            json!({ "run_id": 0 }),
+            NO_DEPOSIT,
+            NearGas::from_tgas(1000),
+        )
+        .await?;
+    let full = first_pay.clone().into_full().expect("pay_run execution");
+    let pay_gas = full.total_gas_burnt.as_gas();
+    eprintln!(
+        "{{\"method\":\"pay_run\",\"lines\":{lines_per_call},\"submit_gas\":{submit_gas},\"pay_gas\":{pay_gas},\"receipts\":{},\"failures\":{}}}",
+        full.receipt_outcomes().len(),
+        full.failures().len(),
+    );
+    first_pay.assert_success();
+    assert_eq!(full.failures().len(), 0, "a failed receipt is not a payout");
+    assert!(pay_gas <= ceiling, "pay_run burnt {pay_gas} gas");
+    let runs = env
+        .view(
+            &payroll,
+            "get_runs",
+            json!({ "employer": employer, "period": period }),
+        )
+        .await?;
+    assert_eq!(
+        status_counts(&runs),
+        (lines_per_call, line_count - lines_per_call)
+    );
+
+    env.call_with_gas(
+        &employer,
+        &payroll,
+        "pay_run",
+        json!({ "run_id": 0 }),
+        NO_DEPOSIT,
+        NearGas::from_tgas(1000),
+    )
+    .await?
+    .assert_success();
+    let runs = env
+        .view(
+            &payroll,
+            "get_runs",
+            json!({ "employer": employer, "period": period }),
+        )
+        .await?;
+    assert_eq!(status_counts(&runs), (line_count, 0));
     Ok(())
 }

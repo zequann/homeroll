@@ -263,7 +263,7 @@ A run's status comes from its lines. It is `Pending` while any line is `Reserved
 
 Run ids are per employer, start at 0, and are the index in `runs`.
 
-Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 40`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. These are the demo floor (§4 pays 40 workers). Q3 measures the gas ceiling and replaces the line limits. `token` is set in `new(admin, token)` and never changes.
+Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 36`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. The run and payee limits are the demo floor (§4 pays 40 workers). `max_lines_per_call` is the gas ceiling below. `token` is set in `new(admin, token)` and never changes.
 
 **Methods:**
 
@@ -324,7 +324,15 @@ A caller that is not an employer fails with `ERR_NOT_EMPLOYER` before check 1. C
 
 A failed, skipped or cancelled line can be paid later in a new run for the same period ("Pay missed worker", §9.1). A worker already paid for a period cannot get a top-up through payroll (§18).
 
-**Gas.** `submit_run` makes no transfers, so a whole run fits in one call. `pay_run` makes one `ft_transfer` + callback per line. The per-transaction gas limit is 1000 Tgas at the time of writing (confirm in the sandbox, Q3). Measure in sandbox integration tests and set `max_lines_per_call` so one `pay_run` stays under ~900 Tgas, and replace `max_lines_per_run` so `submit_run` does too. Until that measurement, the line limits stay at the demo floor of 40.
+**Gas.** `submit_run` makes no transfers. A 40-line `submit_run` burnt 7.028 Tgas in the sandbox, so `max_lines_per_run` stays 40.
+
+`pay_run` attaches 15 Tgas to each `ft_transfer` and 10 Tgas to each `on_line_paid`. Live testnet and mainnet `limit_config` both set `max_total_prepaid_gas` and `max_gas_burnt` to 1000 Tgas. The 90% line is 900 Tgas. Promise gas runs out before execution burn gets near that line. One sandbox run per size, on the `cargo near` wasm, `total_gas_burnt` summed over every receipt:
+
+- 36 lines in one run paid, 182.250 Tgas, 146 receipts, 0 failures.
+- 37 lines panicked with `Exceeded the prepaid gas` and paid nothing. The 36.7 Tgas on that failed receipt is the reverted call.
+- With the cap at 36, the first `pay_run` of a 40-line run paid 36 lines and burnt 183.423 Tgas, again 146 receipts and 0 failures. The second call paid the other 4.
+
+`max_lines_per_call` is 36. A 40-worker run takes two `pay_run` calls. Each extra successful line burnt about 5.2 Tgas, and every transfer succeeded, so the per-receipt limit is not what binds. Testnet hashes for this check are still open (Q3).
 
 **Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `perabotjaya.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
 
@@ -687,7 +695,7 @@ homeroll/
 | # | Question | Owner | Fallback |
 |---|---|---|---|---|
 | Q2 | Confirm on testnet that the relayer pays the 1 yocto in a delegate action, and that a failed call refunds the deposit to the worker (NEP-366 docs say so) | On-chain dev | Fund worker accounts with 0.05 NEAR |
-| Q3 | Max lines per `pay_run` and per `submit_run` under ~900 Tgas (limit 1000 Tgas — confirm) | On-chain dev | Smaller batches |
+| Q3 | Testnet tx hashes for the sandbox batch. `max_lines_per_call` is 36 and `max_lines_per_run` stays 40 | On-chain dev | Smaller batches |
 | Q7 | How much of the agent key's 1 NEAR allowance one run uses, and whether gas refunds go back to it | On-chain dev | Reset demo adds a fresh key |
 | Q8 | Gas `ft_transfer` needs, to set the relayer's gas cap | On-chain dev | Keep 30 Tgas |
 
@@ -695,7 +703,7 @@ homeroll/
 
 - **Before measuring:** read the live limits from testnet RPC `EXPERIMENTAL_protocol_config` (`max_total_prepaid_gas`, `max_gas_burnt`), and the same call on mainnet (read-only, free) to confirm they match. Gas results are read from `EXPERIMENTAL_tx_status`, summing `gas_burnt` over every receipt, not just the first.
 - **Q2 — relayer pays the 1 yocto.** Create a worker with `create_worker`, then read the worker's and relayer's balances (`view_account`, in yocto). The worker signs a delegate action `tusdc.ft_transfer(payout, 1 tUSDC)` with 1 yocto; the relayer submits it. Pass if the worker's NEAR balance is unchanged to the yocto and the relayer's drops by gas + 1 yocto. Then the drain check, with relayer rule 3 switched off on a throwaway relayer funded with 2 testnet NEAR: attach 1 NEAR, see the call fail and the 1 NEAR land on the worker. This proves why rule 3 exists; record both tx hashes.
-- **Q3 — lines per run.** Seed synthetic payees in steps (40, 80, 120, 160…) and run `submit_run` and `pay_run` at each size. Record gas per call and plot lines vs gas. The batch size is the largest that stays under 90% of `max_total_prepaid_gas`, rounded down. Also check the per-receipt limit inside `pay_run`, since each `ft_transfer` + callback is its own receipt.
+- **Q3 — lines per run.** Sandbox measurement is in §7.3. `max_lines_per_call` is 36 because 37 lines cannot be scheduled inside 1000 Tgas. `max_lines_per_run` stays 40 because a 40-line `submit_run` burnt 7.028 Tgas. The quoted number is still a testnet tx hash from `scripts/measure/`, read from `EXPERIMENTAL_tx_status` with `gas_burnt` summed over every receipt.
 - **Q7 — agent key allowance.** Read the key with `view_access_key` (allowance in yocto) before and after one full 40-line run (`submit_run` + `pay_run`). Repeat three times. Report NEAR used per run, and whether unused gas comes back to the allowance or to the account balance (compare both before and after).
 - **Q8 — gas for `ft_transfer`.** Send ten real worker transfers through `/api/relay` on testnet (to `payout` and `offramp`). Take the highest total gas burnt; the relayer's cap is 2× that, rounded up to a whole Tgas. Also price one send-home in NEAR at the current mainnet gas price (RPC `gas_price`, read-only) for the README.
 
