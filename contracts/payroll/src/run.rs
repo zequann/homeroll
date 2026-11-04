@@ -31,6 +31,11 @@ pub(crate) struct RunLine {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineStatus {
     Reserved,
+    Sent,
+    Paid,
+    Failed,
+    Skipped,
+    Cancelled,
 }
 
 impl LineStatus {
@@ -38,7 +43,8 @@ impl LineStatus {
     /// Check 6 reads this and nothing else.
     pub(crate) const fn claims_period(self) -> bool {
         match self {
-            Self::Reserved => true,
+            Self::Reserved | Self::Sent | Self::Paid => true,
+            Self::Failed | Self::Skipped | Self::Cancelled => false,
         }
     }
 }
@@ -49,17 +55,25 @@ impl LineStatus {
 pub enum RunStatus {
     Pending,
     Done,
+    Cancelled,
 }
 
 impl Run {
-    /// Pending while any line is Reserved, otherwise Done.
+    /// `Pending` wins over `Cancelled`. A new line status has to update this match.
     pub(crate) fn status(&self) -> RunStatus {
-        if self
-            .lines
-            .iter()
-            .any(|line| matches!(line.status, LineStatus::Reserved))
-        {
+        let mut pending = false;
+        let mut cancelled = false;
+        for line in &self.lines {
+            match line.status {
+                LineStatus::Reserved => pending = true,
+                LineStatus::Cancelled => cancelled = true,
+                LineStatus::Sent | LineStatus::Paid | LineStatus::Failed | LineStatus::Skipped => {}
+            }
+        }
+        if pending {
             RunStatus::Pending
+        } else if cancelled {
+            RunStatus::Cancelled
         } else {
             RunStatus::Done
         }

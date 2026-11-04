@@ -9,11 +9,14 @@ mod run;
 use homeroll_common::errors::{ERR_EMPLOYER_EXISTS, ERR_NOT_ADMIN, ERR_NOT_EMPLOYER, line_error};
 use near_sdk::json_types::{U64, U128};
 use near_sdk::store::LookupMap;
-use near_sdk::{AccountId, BorshStorageKey, PanicOnDefault, env, near, require};
+use near_sdk::{
+    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, PromiseError, PromiseOrValue, env,
+    ext_contract, near, require,
+};
 
 use config::Config;
-use employer::{Employer, EmployerView};
-use events::{EmployerRegistered, PayeeAdded, PayrollEvent, RunSubmitted};
+use employer::{Employer, EmployerView, PayAction, Settlement};
+use events::{EmployerRegistered, PayeeAdded, PayrollEvent, PayrollLineEvent, RunSubmitted};
 use run::{PayLine, RunView};
 
 /// One enum for every storage prefix, so two collections cannot share a key space.
@@ -51,22 +54,40 @@ impl Rejection {
     }
 }
 
+const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
+const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(15);
+const GAS_FOR_ON_LINE_PAID: Gas = Gas::from_tgas(10);
+
+#[ext_contract(ext_ft)]
+#[allow(dead_code, reason = "only the generated `ext_ft` is used")]
+trait FungibleToken {
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
+}
+
+fn employer_from_credit_msg(msg: &str) -> Option<AccountId> {
+    let value: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(msg).ok()?;
+    let employer = value.get("employer")?.as_str()?;
+    employer.parse().ok()
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Payroll {
     /// The Homeroll admin (SPEC §7, common rules).
     admin: AccountId,
+    /// tUSDC account (`tusdc.<root>`). Set at init, never updated.
+    token: AccountId,
     config: Config,
     employers: LookupMap<AccountId, Employer>,
 }
 
 #[near]
 impl Payroll {
-    /// Unchanged interface.
     #[init]
-    pub fn new(admin: AccountId) -> Self {
+    pub fn new(admin: AccountId, token: AccountId) -> Self {
         Self {
             admin,
+            token,
             config: Config::INITIAL,
             employers: LookupMap::new(StorageKey::Employers),
         }
@@ -130,6 +151,114 @@ impl Payroll {
         }];
         PayrollEvent::RunSubmitted(&submitted_event).emit();
         submitted.run_id
+    }
+
+    /// Sends or skips up to `max_lines_per_call` reserved lines (SPEC §7.3).
+    pub fn pay_run(&mut self, run_id: u64) {
+        let caller = env::predecessor_account_id();
+        let config = self.config;
+        let now = env::block_timestamp();
+        let token = self.token.clone();
+        let actions = {
+            let employer = self.employer_mut(&caller);
+            match employer.pay_run(run_id, now, &config) {
+                Ok(actions) => actions,
+                Err(rejection) => rejection.panic(),
+            }
+        };
+
+        for action in actions {
+            match action {
+                PayAction::Skipped {
+                    index,
+                    account_id,
+                    amount,
+                } => {
+                    let event = [PayrollLineEvent {
+                        employer: caller.clone(),
+                        run_id,
+                        line_index: index,
+                        account_id,
+                        amount: U128(amount),
+                    }];
+                    PayrollEvent::PayrollLineSkipped(&event).emit();
+                }
+                PayAction::Sent {
+                    index,
+                    account_id,
+                    amount,
+                } => {
+                    let event = [PayrollLineEvent {
+                        employer: caller.clone(),
+                        run_id,
+                        line_index: index,
+                        account_id: account_id.clone(),
+                        amount: U128(amount),
+                    }];
+                    PayrollEvent::PayrollLineSent(&event).emit();
+                    // Each transfer is its own chain. `then` panics if a callback already
+                    // has a predecessor, so a second line cannot be attached to the first.
+                    ext_ft::ext(token.clone())
+                        .with_attached_deposit(ONE_YOCTO)
+                        .with_static_gas(GAS_FOR_FT_TRANSFER)
+                        .ft_transfer(account_id, U128(amount), None)
+                        .then(
+                            Self::ext(env::current_account_id())
+                                .with_static_gas(GAS_FOR_ON_LINE_PAID)
+                                .on_line_paid(caller.clone(), run_id, index),
+                        )
+                        .detach();
+                }
+            }
+        }
+    }
+
+    #[private]
+    pub fn on_line_paid(
+        &mut self,
+        employer: AccountId,
+        run_id: u64,
+        line_index: u32,
+        #[callback_result] transfer: Result<(), PromiseError>,
+    ) {
+        let settlement = match self.employers.get_mut(&employer) {
+            Some(record) => record.settle_line(run_id, line_index, transfer.is_ok()),
+            None => Settlement::Ignored,
+        };
+        if let Settlement::Failed { account_id, amount } = settlement {
+            let event = [PayrollLineEvent {
+                employer,
+                run_id,
+                line_index,
+                account_id,
+                amount: U128(amount),
+            }];
+            PayrollEvent::PayrollLineFailed(&event).emit();
+        }
+    }
+
+    #[payable]
+    pub fn ft_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        amount: U128,
+        msg: String,
+    ) -> PromiseOrValue<U128> {
+        let _ = sender_id;
+        if env::predecessor_account_id() != self.token {
+            return PromiseOrValue::Value(amount);
+        }
+        let Some(employer_id) = employer_from_credit_msg(&msg) else {
+            return PromiseOrValue::Value(amount);
+        };
+        let Some(record) = self.employers.get_mut(&employer_id) else {
+            return PromiseOrValue::Value(amount);
+        };
+        if record.credit_treasury(amount.0) {
+            PromiseOrValue::Value(U128(0))
+        } else {
+            PromiseOrValue::Value(amount)
+        }
     }
 
     /// `null` for an unknown employer.

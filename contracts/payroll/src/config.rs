@@ -7,6 +7,8 @@ use near_sdk::near;
 pub(crate) struct Config {
     /// Check 1 of `submit_run`: bounds the work before any line is read.
     pub(crate) max_lines_per_run: u32,
+    /// How many `Reserved` lines `pay_run` may send or skip in one call.
+    pub(crate) max_lines_per_call: u32,
     /// R15: payee limit per employer (ADR-0002: the contract pays for storage).
     pub(crate) max_payees_per_employer: u32,
     /// R3: hold before a payee added after onboarding becomes active.
@@ -22,6 +24,7 @@ const HOLD_NS: u64 = 48 * 60 * 60 * 1_000_000_000;
 impl Config {
     pub(crate) const INITIAL: Self = Self {
         max_lines_per_run: DEMO_PAYEES,
+        max_lines_per_call: DEMO_PAYEES,
         max_payees_per_employer: DEMO_PAYEES,
         hold_ns: HOLD_NS,
     };

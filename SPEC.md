@@ -253,7 +253,8 @@ Employer {
 Payee { cap: u128, active_from: u64, pending_cap: Option<(u128, u64)> }
 Run { period: String, lines: Vec<RunLine> }
 RunLine { account_id: AccountId, amount: u128, status: Reserved | Sent | Paid | Failed | Skipped | Cancelled }
-Config { hold_ns: u64, max_lines_per_run: u32, max_payees_per_employer: u32 }
+Config { hold_ns: u64, max_lines_per_run: u32, max_lines_per_call: u32, max_payees_per_employer: u32 }
+Payroll { admin: AccountId, token: AccountId, config: Config, employers: ... }
 ```
 
 A payee holds a period while any run of that period has a line for them in `Reserved`, `Sent`, or `Paid`. The line status is the only record of that fact.
@@ -262,14 +263,15 @@ A run's status comes from its lines. It is `Pending` while any line is `Reserved
 
 Run ids are per employer, start at 0, and are the index in `runs`.
 
-Initial config is `max_lines_per_run = 40`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. These are the demo floor (§4 pays 40 workers). Q3 measures the gas ceiling and replaces the line limits. `token` and `max_lines_per_call` are added with `ft_on_transfer` and `pay_run`.
+Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 40`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. These are the demo floor (§4 pays 40 workers). Q3 measures the gas ceiling and replaces the line limits. `token` is set in `new(admin, token)` and never changes.
 
 **Methods:**
 
 | Method | Caller | Rule |
 |---|---|---|
+| `new(admin: AccountId, token: AccountId)` | deploy | Sets the tUSDC account for `ft_on_transfer` and payouts |
 | `register_employer(employer: AccountId, buffer: U128)` | admin | Onboards an employer with `onboarding = true`. Already registered → `ERR_EMPLOYER_EXISTS` |
-| `ft_on_transfer(sender_id, amount, msg)` | `tusdc` only | `msg = {"employer":"<id>"}` credits that employer's treasury. Reject other tokens (`ERR_WRONG_TOKEN`) and unknown employers (`ERR_UNKNOWN_EMPLOYER`) by returning the full amount |
+| `ft_on_transfer(sender_id, amount, msg)` | `tusdc` only | `msg = {"employer":"<id>"}` credits that employer's treasury when the predecessor is `token` and the employer is registered. Any other case returns the full amount and writes nothing |
 | `add_payee(account_id, cap: U128)` | employer | At most `max_payees_per_employer` → else `ERR_TOO_MANY_PAYEES`. During onboarding → active immediately. After onboarding → `active_from = now + hold_ns` (the 48-hour hold). Re-adding a payee replaces it (new cap and `active_from`) and it still counts as one payee |
 | `update_cap(account_id, cap: U128)` | employer | Decrease: immediate. Increase: after `hold_ns` |
 | `remove_payee(account_id)` | employer | Immediate. Their lines not yet sent are skipped by `pay_run` |
@@ -290,6 +292,9 @@ Events for this behaviour, each with `data` as a one-element array. JSON timesta
 - `employer_registered` with `{employer, buffer}`
 - `payee_added` with `{employer, account_id, cap, active_from}`
 - `run_submitted` with `{employer, run_id, period, total, line_count}`
+- `payroll_line_sent` with `{employer, run_id, line_index, account_id, amount}`
+- `payroll_line_skipped` with `{employer, run_id, line_index, account_id, amount}`
+- `payroll_line_failed` with `{employer, run_id, line_index, account_id, amount}`
 
 Other payroll errors: `ERR_NOT_ADMIN` (caller is not the admin), `ERR_NOT_EMPLOYER` (caller is not a registered employer), `ERR_UNKNOWN_PAYEE` (update/remove of a payee that does not exist), `ERR_INSUFFICIENT_TREASURY` (withdraw above balance), `ERR_RUN_NOT_FOUND`, `ERR_RUN_COMPLETE` (`pay_run` or `cancel_run` on a run with no lines left to send).
 
@@ -313,7 +318,7 @@ A caller that is not an employer fails with `ERR_NOT_EMPLOYER` before check 1. C
    - Payee no longer active (removed, or re-added and on hold) → line `Skipped`, amount back to the treasury, emit `payroll_line_skipped`. A `Skipped` line does not hold the period.
    - Otherwise → line `Sent`, emit `payroll_line_sent`, `ft_transfer` to the payee with callback `on_line_paid`.
 3. When no line is left `Reserved`, the derived status is `Done`, or `Cancelled` if any line is `Cancelled`.
-4. `on_line_paid`: success → line `Paid`. Failure → line `Failed`, amount back to the treasury, emit `payroll_line_failed`. A `Failed` line does not hold the period.
+4. `on_line_paid(employer, run_id, line_index, #[callback_result] transfer)`: success → line `Paid`. Failure → line `Failed`, amount back to the treasury, emit `payroll_line_failed`. A `Failed` line does not hold the period. A stale or duplicate callback returns without changing treasury.
 
 **`cancel_run`:** every `Reserved` line becomes `Cancelled` and its amount goes back to the treasury. The derived status is `Cancelled`. `run_cancelled` is emitted. Lines already sent stay as they are.
 

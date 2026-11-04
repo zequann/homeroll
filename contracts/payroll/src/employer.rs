@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 
 use homeroll_common::errors::{
     ERR_ABOVE_WAGE_CAP, ERR_ALREADY_PAID, ERR_BELOW_BUFFER, ERR_DUPLICATE_PAYEE,
-    ERR_PAYEE_NOT_ACTIVE, ERR_PERIOD_NOT_OPEN, ERR_TOO_MANY_LINES, ERR_TOO_MANY_PAYEES,
+    ERR_PAYEE_NOT_ACTIVE, ERR_PERIOD_NOT_OPEN, ERR_RUN_COMPLETE, ERR_RUN_NOT_FOUND,
+    ERR_TOO_MANY_LINES, ERR_TOO_MANY_PAYEES,
 };
 use homeroll_common::period::Period;
 use near_sdk::json_types::U128;
@@ -47,6 +48,27 @@ pub(crate) struct SubmittedRun {
     pub(crate) period: String,
     pub(crate) total: u128,
     pub(crate) line_count: u32,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PayAction {
+    Sent {
+        index: u32,
+        account_id: AccountId,
+        amount: u128,
+    },
+    Skipped {
+        index: u32,
+        account_id: AccountId,
+        amount: u128,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Settlement {
+    Paid,
+    Failed { account_id: AccountId, amount: u128 },
+    Ignored,
 }
 
 /// Proof that checks 1–7 passed. Only `check_run` builds one and only `reserve` consumes one.
@@ -144,15 +166,19 @@ impl Employer {
         // R3: only active payees can be paid. A missing payee is not active.
         let mut caps = Vec::with_capacity(lines.len());
         for (index, line) in lines.iter().enumerate() {
-            match self.payees.get(&line.account_id) {
-                Some(payee) if now >= payee.active_from => caps.push(payee.cap),
-                _ => {
-                    return Err(Rejection::line(
-                        ERR_PAYEE_NOT_ACTIVE,
-                        index,
-                        &line.account_id,
-                    ));
-                }
+            if Self::payee_active(&self.payees, &line.account_id, now) {
+                caps.push(
+                    self.payees
+                        .get(&line.account_id)
+                        .expect("active implies present")
+                        .cap,
+                );
+            } else {
+                return Err(Rejection::line(
+                    ERR_PAYEE_NOT_ACTIVE,
+                    index,
+                    &line.account_id,
+                ));
             }
         }
 
@@ -253,6 +279,122 @@ impl Employer {
         self.runs_by_period.get(period).cloned().unwrap_or_default()
     }
 
+    fn payee_active(
+        payees: &IterableMap<AccountId, Payee>,
+        account_id: &AccountId,
+        now: u64,
+    ) -> bool {
+        payees
+            .get(account_id)
+            .is_some_and(|payee| now >= payee.active_from)
+    }
+
+    /// Pays up to `max_lines_per_call` reserved lines. Inactive payees are skipped (R3).
+    pub(crate) fn pay_run(
+        &mut self,
+        run_id: u64,
+        now: u64,
+        config: &Config,
+    ) -> Result<Vec<PayAction>, Rejection> {
+        let run_id_u32 = u32::try_from(run_id)
+            .ok()
+            .filter(|&id| id < self.runs.len());
+        let Some(run_id_u32) = run_id_u32 else {
+            return Err(Rejection::new(ERR_RUN_NOT_FOUND));
+        };
+        let has_reserved = self.runs.get(run_id_u32).is_some_and(|run| {
+            run.lines
+                .iter()
+                .any(|line| matches!(line.status, LineStatus::Reserved))
+        });
+        if !has_reserved {
+            return Err(Rejection::new(ERR_RUN_COMPLETE));
+        }
+
+        let mut actions = Vec::new();
+        let mut batch = 0u32;
+        let run = self
+            .runs
+            .get_mut(run_id_u32)
+            .expect("run id was validated above");
+        for (index, line) in run.lines.iter_mut().enumerate() {
+            if batch >= config.max_lines_per_call {
+                break;
+            }
+            if !matches!(line.status, LineStatus::Reserved) {
+                continue;
+            }
+            batch += 1;
+            let account_id = line.account_id.clone();
+            let amount = line.amount;
+            if Self::payee_active(&self.payees, &account_id, now) {
+                line.status = LineStatus::Sent;
+                actions.push(PayAction::Sent {
+                    index: u32::try_from(index).expect("line index fits in u32"),
+                    account_id,
+                    amount,
+                });
+            } else {
+                // R3: an inactive payee is skipped and the amount returns to treasury.
+                line.status = LineStatus::Skipped;
+                self.treasury = self
+                    .treasury
+                    .checked_add(amount)
+                    .expect("treasury refund cannot overflow");
+                actions.push(PayAction::Skipped {
+                    index: u32::try_from(index).expect("line index fits in u32"),
+                    account_id,
+                    amount,
+                });
+            }
+        }
+        Ok(actions)
+    }
+
+    pub(crate) fn settle_line(
+        &mut self,
+        run_id: u64,
+        line_index: u32,
+        transfer_ok: bool,
+    ) -> Settlement {
+        let Ok(run_id_u32) = u32::try_from(run_id) else {
+            return Settlement::Ignored;
+        };
+        let Some(run) = self.runs.get_mut(run_id_u32) else {
+            return Settlement::Ignored;
+        };
+        let Some(line) = run.lines.get_mut(line_index as usize) else {
+            return Settlement::Ignored;
+        };
+        if !matches!(line.status, LineStatus::Sent) {
+            return Settlement::Ignored;
+        }
+        if transfer_ok {
+            line.status = LineStatus::Paid;
+            Settlement::Paid
+        } else {
+            line.status = LineStatus::Failed;
+            self.treasury = self
+                .treasury
+                .checked_add(line.amount)
+                .expect("treasury refund cannot overflow");
+            Settlement::Failed {
+                account_id: line.account_id.clone(),
+                amount: line.amount,
+            }
+        }
+    }
+
+    pub(crate) fn credit_treasury(&mut self, amount: u128) -> bool {
+        match self.treasury.checked_add(amount) {
+            Some(treasury) => {
+                self.treasury = treasury;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub(crate) fn view(&self) -> EmployerView {
         EmployerView {
             treasury: U128(self.treasury),
@@ -284,6 +426,7 @@ mod tests {
     use near_sdk::{AccountId, testing_env};
 
     use super::Employer;
+    use super::{PayAction, Settlement};
     use crate::config::Config;
     use crate::run::{LineStatus, PayLine, RunStatus};
 
@@ -378,5 +521,150 @@ mod tests {
         assert_eq!(err.as_str(), format!("ERR_ALREADY_PAID:0:{W1}"));
         assert_eq!(employer.treasury, 0);
         assert_eq!(employer.runs_in("2026-11").len(), 1);
+    }
+
+    fn config_one_line_per_call() -> Config {
+        Config {
+            max_lines_per_run: 40,
+            max_lines_per_call: 1,
+            max_payees_per_employer: 40,
+            hold_ns: Config::INITIAL.hold_ns,
+        }
+    }
+
+    const W2: &str = "w-abc123.homeroll.testnet";
+
+    fn employer_with_two_payees() -> Employer {
+        let mut employer = employer_with_one_payee();
+        employer
+            .add_payee(account(W2), 100, NOW, &Config::INITIAL)
+            .expect("second payee");
+        employer.treasury = 200;
+        employer
+    }
+
+    #[test]
+    fn pay_run_sends_one_line_per_call_and_leaves_the_run_pending() {
+        let mut employer = employer_with_two_payees();
+        employer
+            .submit_run(
+                NOW,
+                "2026-11",
+                &[line(W1, 100), line(W2, 100)],
+                &Config::INITIAL,
+            )
+            .expect("submit");
+        assert_eq!(employer.treasury, 0);
+        let actions = employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("first batch");
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], PayAction::Sent { index: 0, .. }));
+        let runs = employer.runs_in("2026-11");
+        assert_eq!(runs[0].status, RunStatus::Pending);
+        assert_eq!(runs[0].lines[0].status, LineStatus::Sent);
+        assert_eq!(runs[0].lines[1].status, LineStatus::Reserved);
+    }
+
+    #[test]
+    fn the_second_pay_run_sends_the_next_reserved_line_only() {
+        let mut employer = employer_with_two_payees();
+        employer
+            .submit_run(
+                NOW,
+                "2026-11",
+                &[line(W1, 100), line(W2, 100)],
+                &Config::INITIAL,
+            )
+            .expect("submit");
+        employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("first batch");
+        let actions = employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("second batch");
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], PayAction::Sent { index: 1, .. }));
+        let runs = employer.runs_in("2026-11");
+        assert_eq!(runs[0].lines[0].status, LineStatus::Sent);
+        assert_eq!(runs[0].lines[1].status, LineStatus::Sent);
+    }
+
+    #[test]
+    fn a_second_settlement_on_a_finished_line_is_ignored() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("send");
+        assert_eq!(
+            employer.settle_line(0, 0, true),
+            Settlement::Paid,
+            "first callback"
+        );
+        assert_eq!(employer.treasury, 0);
+        assert_eq!(employer.settle_line(0, 0, true), Settlement::Ignored);
+        assert_eq!(employer.treasury, 0);
+
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("send");
+        assert_eq!(
+            employer.settle_line(0, 0, false),
+            Settlement::Failed {
+                account_id: account(W1),
+                amount: 100,
+            }
+        );
+        assert_eq!(employer.treasury, 100);
+        assert_eq!(employer.settle_line(0, 0, false), Settlement::Ignored);
+        assert_eq!(employer.treasury, 100);
+    }
+
+    #[test]
+    fn a_sent_line_still_holds_the_period() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("send");
+        let err = employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .unwrap_err();
+        assert_eq!(err.as_str(), format!("ERR_ALREADY_PAID:0:{W1}"));
+    }
+
+    #[test]
+    fn a_failed_line_does_not_hold_the_period() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 200;
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("first submit");
+        employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("send");
+        assert_eq!(
+            employer.settle_line(0, 0, false),
+            Settlement::Failed {
+                account_id: account(W1),
+                amount: 100,
+            }
+        );
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 50)], &Config::INITIAL)
+            .expect("retry after failure");
+        assert_eq!(employer.treasury, 150);
     }
 }

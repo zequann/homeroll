@@ -14,6 +14,12 @@ pub(crate) enum PayrollEvent<'a> {
     PayeeAdded(&'a [PayeeAdded]),
     #[event_version("1.0.0")]
     RunSubmitted(&'a [RunSubmitted<'a>]),
+    #[event_version("1.0.0")]
+    PayrollLineSent(&'a [PayrollLineEvent]),
+    #[event_version("1.0.0")]
+    PayrollLineSkipped(&'a [PayrollLineEvent]),
+    #[event_version("1.0.0")]
+    PayrollLineFailed(&'a [PayrollLineEvent]),
 }
 
 #[near(serializers = [json])]
@@ -37,4 +43,13 @@ pub(crate) struct RunSubmitted<'a> {
     pub(crate) period: &'a str,
     pub(crate) total: U128,
     pub(crate) line_count: u32,
+}
+
+#[near(serializers = [json])]
+pub(crate) struct PayrollLineEvent {
+    pub(crate) employer: AccountId,
+    pub(crate) run_id: u64,
+    pub(crate) line_index: u32,
+    pub(crate) account_id: AccountId,
+    pub(crate) amount: U128,
 }

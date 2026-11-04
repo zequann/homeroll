@@ -11,7 +11,7 @@ async fn every_contract_deploys_and_initialises_under_the_root() -> TestResult {
         .await?;
     env.deploy(Contract::Factory, json!({ "admin": admin, "token": tusdc }))
         .await?;
-    env.deploy(Contract::Payroll, json!({ "admin": admin }))
+    env.deploy(Contract::Payroll, json!({ "admin": admin, "token": tusdc }))
         .await?;
     env.deploy(Contract::Pool, json!({ "admin": admin }))
         .await?;
