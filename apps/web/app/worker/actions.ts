@@ -6,10 +6,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { type CashoutDestination, mockDuitNow } from "@/lib/cashout";
 import { getEnv } from "@/lib/env";
-import { sen, senToUnits, units } from "@/lib/fx";
+import { type Sen, sen, senToUnits, units } from "@/lib/fx";
+import { quoteSwapLeg } from "@/lib/intents";
 import { getMockLedger } from "@/lib/mock/ledger";
 import { getChainClient, getFixtures } from "@/lib/near";
-import { MockRoute, SampleQuote } from "@/lib/remit";
+import { MockRoute, quoteWithSwap, type RemitQuote, SampleQuote } from "@/lib/remit";
 import { requireSigner } from "@/lib/session";
 import { workerTransfer } from "@/lib/worker-transfer";
 
@@ -43,7 +44,21 @@ function refresh() {
   revalidatePath("/owner");
 }
 
-/** Send home: the sample quote prices it, the mock partner takes the tokens (SPEC §8.4). */
+/** The swap leg for this amount: live when configured and reachable, otherwise a labelled sample. */
+async function priceSendHome(amount: Sen): Promise<RemitQuote> {
+  if (getEnv().intentsQuotes === "live") {
+    const live = await quoteSwapLeg(senToUnits(amount));
+    if (live) return quoteWithSwap(amount, live.bps, "live");
+  }
+  return SampleQuote.quote(amount);
+}
+
+/** For the Send home screen, as the amount changes. Asks for a dry-run quote; moves nothing. */
+export async function priceSwap(amountSen: unknown): Promise<RemitQuote> {
+  return priceSendHome(sen(amountSchema.parse(amountSen)));
+}
+
+/** Send home: the quote prices it, the mock partner takes the tokens (SPEC §8.4). */
 export async function sendHome(amountSen: unknown): Promise<SendResult> {
   const amount = sen(amountSchema.parse(amountSen));
   const session = await requireSigner("worker");
@@ -61,7 +76,7 @@ export async function sendHome(amountSen: unknown): Promise<SendResult> {
     ({ ref } = await MockRoute.execute(
       transferAs(session.signer.accountId),
       payout,
-      SampleQuote.quote(amount),
+      await priceSendHome(amount),
       getMockLedger(),
       family?.wallet ?? "bKash",
     ));

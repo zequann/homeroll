@@ -14,6 +14,8 @@ export type MockReceipt =
       txHash: string;
       amountSen: Sen;
       takaOut: number;
+      swapBps: number;
+      swapSource: "live" | "sample";
       maskedWallet: string;
       at: number;
     }
