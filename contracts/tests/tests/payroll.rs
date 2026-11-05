@@ -253,6 +253,38 @@ async fn views_distinguish_a_missing_employer_from_an_employer_with_no_runs() ->
     Ok(())
 }
 
+/// Wage-cap copy reads the payee account and cap. An unknown employer is `null`, same as `get_employer`.
+#[tokio::test]
+async fn get_payees_lists_payees_and_null_for_an_unknown_employer() -> TestResult {
+    let (env, payroll, employer, worker) = employer_with_one_payee().await?;
+    let unknown: AccountId = "nobody.sandbox".parse()?;
+    assert_eq!(
+        env.view(&payroll, "get_payees", json!({ "employer": unknown }))
+            .await?,
+        Value::Null
+    );
+
+    let payees = env
+        .view(&payroll, "get_payees", json!({ "employer": employer }))
+        .await?;
+    let rows = payees
+        .as_array()
+        .expect("a registered employer returns a list");
+    let row = rows
+        .iter()
+        .find(|row| row["account_id"] == json!(worker.as_str()))
+        .expect("the payee added by the helper is listed");
+    assert_eq!(row["cap"], json!(CAP.to_string()));
+    let active_from = row["active_from"]
+        .as_str()
+        .expect("active_from is a JSON string");
+    assert!(
+        !active_from.is_empty() && active_from.bytes().all(|byte| byte.is_ascii_digit()),
+        "active_from is a string of digits, got {active_from}"
+    );
+    Ok(())
+}
+
 async fn register_tusdc_storage(env: &Env, tusdc: &AccountId, account: &AccountId) -> TestResult {
     let bounds = env.view(tusdc, "storage_balance_bounds", json!({})).await?;
     let storage: NearToken = serde_json::from_value(bounds["min"].clone())?;
@@ -595,12 +627,12 @@ fn status_counts(runs: &Value) -> (usize, usize) {
     (paid, reserved)
 }
 
-/// Q3. A 40-line run pays 36 lines, then the rest. One call that tries 37 or more
-/// panics inside the 1000 Tgas protocol limit, so the first call must stay at 36.
+/// Q3. A 40-line run pays 20 lines, then the rest. 35 lines fit in 995 Tgas in the
+/// sandbox and panic on testnet, so the first call stays at 20. SPEC §7.3.
 #[tokio::test]
 async fn a_forty_line_run_pays_in_two_calls_under_the_gas_ceiling() -> TestResult {
     let line_count: usize = 40;
-    let lines_per_call: usize = 36;
+    let lines_per_call: usize = 20;
     let line_amount: u128 = 1_000_000;
     let ceiling: u64 = 900_000_000_000_000;
     let (env, tusdc, payroll, employer, first) = payroll_payout_fixture().await?;
@@ -672,7 +704,7 @@ async fn a_forty_line_run_pays_in_two_calls_under_the_gas_ceiling() -> TestResul
             "pay_run",
             json!({ "run_id": 0 }),
             NO_DEPOSIT,
-            NearGas::from_tgas(1000),
+            NearGas::from_tgas(995),
         )
         .await?;
     let full = first_pay.clone().into_full().expect("pay_run execution");

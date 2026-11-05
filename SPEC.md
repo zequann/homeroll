@@ -263,7 +263,7 @@ A run's status comes from its lines. It is `Pending` while any line is `Reserved
 
 Run ids are per employer, start at 0, and are the index in `runs`.
 
-Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 36`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. The run and payee limits are the demo floor (§4 pays 40 workers). `max_lines_per_call` is the gas ceiling below. `token` is set in `new(admin, token)` and never changes.
+Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 20`, `max_payees_per_employer = 40`, and `hold_ns` of 48 hours. The run and payee limits are the demo floor (§4 pays 40 workers). `max_lines_per_call` is the gas ceiling below. `token` is set in `new(admin, token)` and never changes.
 
 **Methods:**
 
@@ -286,6 +286,8 @@ Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 36`, `max_paye
 `get_employer(employer)` returns `{treasury: U128, buffer: U128, onboarding: bool, payee_count: u32}`, or `null` when the employer is unknown.
 
 `get_runs(employer, period)` returns `[{run_id: u64, period, status, lines: [{account_id, amount: U128, status}]}]`, oldest first. A known employer with no matching runs returns `[]`, including when `period` is not canonical `YYYY-MM`. An unknown employer returns `null`.
+
+`get_payees(employer)` returns `[{account_id, cap: U128, active_from: U64}]`, with `cap` and `active_from` as decimal strings, or `null` when the employer is unknown.
 
 Events for this behaviour, each with `data` as a one-element array. JSON timestamps are `U64` strings, because nanoseconds exceed JavaScript's safe integers.
 
@@ -332,7 +334,7 @@ A failed, skipped or cancelled line can be paid later in a new run for the same 
 - 37 lines panicked with `Exceeded the prepaid gas` and paid nothing. The 36.7 Tgas on that failed receipt is the reverted call.
 - With the cap at 36, the first `pay_run` of a 40-line run paid 36 lines and burnt 183.423 Tgas, again 146 receipts and 0 failures. The second call paid the other 4.
 
-`max_lines_per_call` is 36. A 40-worker run takes two `pay_run` calls. Each extra successful line burnt about 5.2 Tgas, and every transfer succeeded, so the per-receipt limit is not what binds. Testnet hashes for this check are still open (Q3).
+`max_lines_per_call` is 20. A 40-worker run takes two `pay_run` calls. `pay_run` reads that 20 from the code, not from the config `new` stored, because a wasm swap does not rewrite state. Each extra successful line burnt about 5.2 Tgas, and every transfer succeeded, so the per-receipt limit is not what binds. The sandbox can prepay the 1000 Tgas protocol cap, and 36 lines fit in that cap. A function-call key with a 1 NEAR allowance cannot prepay 1000 Tgas: the protocol prices allowance at 10× the block gas price plus the action fee, so the largest prepaid gas that key can sign is 995 Tgas. In the sandbox, 35 lines at 995 Tgas succeed. On testnet the same wasm and the same 995 Tgas panic `Exceeded the prepaid gas` while the stored config is still 36 (tx `3A26sakHbdFEyR4gCVKtxSQkBoeJ275CM3yfSp1LYay1`). 20 lines attach 500 Tgas and leave the rest of a 970 Tgas prepaid call for execution. Testnet hashes for the burn check are still open (Q3).
 
 **Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `perabotjaya.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
 
@@ -472,6 +474,8 @@ interface RemitRoute {
 | Invoice model | `InferenceClient` → `MockInference`, in-process in `lib/agents` | NEAR AI Cloud private inference |
 | Cross-chain deposit delivery (P1) | `POST /api/mock/deposit` → `solver.<root>` sends tUSDC | Solvers delivering a NEAR Intents swap |
 | FX | `lib/fx` constants | FX feed |
+
+On testnet the buyer's bank transfer into escrow is not simulated per call. `escrow.<root>` already holds tUSDC for one payment of each fixture invoice, and `scripts/fund-company.ts` tops it back up. That script also creates the account and calls `pool.add_settler` for it.
 
 Every mock response carries `"mock": true`. Every UI element backed by a mock shows a badge naming what is mocked: **"Mock partner"**, "Mock model" for the invoice model, "Mock delivery" for cross-chain deposits.
 
@@ -707,7 +711,7 @@ homeroll/
 | # | Question | Owner | Fallback |
 |---|---|---|---|---|
 | Q2 | Confirm on testnet that the relayer pays the 1 yocto in a delegate action, and that a failed call refunds the deposit to the worker (NEP-366 docs say so) | On-chain dev | Fund worker accounts with 0.05 NEAR |
-| Q3 | Testnet tx hashes for the sandbox batch. `max_lines_per_call` is 36 and `max_lines_per_run` stays 40 | On-chain dev | Smaller batches |
+| Q3 | Testnet tx hashes for the sandbox batch. `max_lines_per_call` is 20 because 35 lines at 995 Tgas panic on testnet (§7.3). `max_lines_per_run` stays 40 | On-chain dev | Smaller batches |
 | Q7 | How much of the agent key's 1 NEAR allowance one run uses, and whether gas refunds go back to it | On-chain dev | Reset demo adds a fresh key |
 | Q8 | Gas `ft_transfer` needs, to set the relayer's gas cap | On-chain dev | Keep 30 Tgas |
 
@@ -715,7 +719,7 @@ homeroll/
 
 - **Before measuring:** read the live limits from testnet RPC `EXPERIMENTAL_protocol_config` (`max_total_prepaid_gas`, `max_gas_burnt`), and the same call on mainnet (read-only, free) to confirm they match. Gas results are read from `EXPERIMENTAL_tx_status`, summing `gas_burnt` over every receipt, not just the first.
 - **Q2 — relayer pays the 1 yocto.** Create a worker with `create_worker`, then read the worker's and relayer's balances (`view_account`, in yocto). The worker signs a delegate action `tusdc.ft_transfer(payout, 1 tUSDC)` with 1 yocto; the relayer submits it. Pass if the worker's NEAR balance is unchanged to the yocto and the relayer's drops by gas + 1 yocto. Then the drain check, with relayer rule 3 switched off on a throwaway relayer funded with 2 testnet NEAR: attach 1 NEAR, see the call fail and the 1 NEAR land on the worker. This proves why rule 3 exists; record both tx hashes.
-- **Q3 — lines per run.** Sandbox measurement is in §7.3. `max_lines_per_call` is 36 because 37 lines cannot be scheduled inside 1000 Tgas. `max_lines_per_run` stays 40 because a 40-line `submit_run` burnt 7.028 Tgas. The quoted number is still a testnet tx hash from `scripts/measure/`, read from `EXPERIMENTAL_tx_status` with `gas_burnt` summed over every receipt.
+- **Q3 — lines per run.** Sandbox measurement is in §7.3. 37 lines cannot be scheduled inside 1000 Tgas. `max_lines_per_call` is 20 because a 1 NEAR function-call key can prepay 995 Tgas, and 35 lines at that gas panic on testnet. `max_lines_per_run` stays 40 because a 40-line `submit_run` burnt 7.028 Tgas. The quoted number is still a testnet tx hash from `scripts/measure/`, read from `EXPERIMENTAL_tx_status` with `gas_burnt` summed over every receipt.
 - **Q7 — agent key allowance.** Read the key with `view_access_key` (allowance in yocto) before and after one full 40-line run (`submit_run` + `pay_run`). Repeat three times. Report NEAR used per run, and whether unused gas comes back to the allowance or to the account balance (compare both before and after).
 - **Q8 — gas for `ft_transfer`.** Send ten real worker transfers through `/api/relay` on testnet (to `payout` and `offramp`). Take the highest total gas burnt; the relayer's cap is 2× that, rounded up to a whole Tgas. Also price one send-home in NEAR at the current mainnet gas price (RPC `gas_price`, read-only) for the README.
 

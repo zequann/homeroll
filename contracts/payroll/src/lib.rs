@@ -15,7 +15,7 @@ use near_sdk::{
 };
 
 use config::Config;
-use employer::{Employer, EmployerView, PayAction, Settlement};
+use employer::{Employer, EmployerView, PayAction, PayeeView, Settlement};
 use events::{EmployerRegistered, PayeeAdded, PayrollEvent, PayrollLineEvent, RunSubmitted};
 use run::{PayLine, RunView};
 
@@ -156,7 +156,9 @@ impl Payroll {
     /// Sends or skips up to `max_lines_per_call` reserved lines (SPEC §7.3).
     pub fn pay_run(&mut self, run_id: u64) {
         let caller = env::predecessor_account_id();
-        let config = self.config;
+        let mut config = self.config;
+        // A wasm swap does not rewrite the config stored by `new`.
+        config.max_lines_per_call = Config::lines_per_call();
         let now = env::block_timestamp();
         let token = self.token.clone();
         let actions = {
@@ -264,6 +266,11 @@ impl Payroll {
     /// `null` for an unknown employer.
     pub fn get_employer(&self, employer: AccountId) -> Option<EmployerView> {
         self.employers.get(&employer).map(Employer::view)
+    }
+
+    /// Payees of `employer`. `null` for an unknown employer.
+    pub fn get_payees(&self, employer: AccountId) -> Option<Vec<PayeeView>> {
+        self.employers.get(&employer).map(Employer::payee_views)
     }
 
     /// Runs for `period`, oldest first. `null` for an unknown employer.
