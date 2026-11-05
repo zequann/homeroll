@@ -120,7 +120,32 @@ export async function fakeChainTransfer(
   return { ok: false, rule: "unavailable", message: "The relayer is unavailable. Try again." };
 }
 
-/** For server actions. `CHAIN_CLIENT=near` posts to /api/relay instead, once NearChainClient exists. */
+/**
+ * On testnet `NearChainClient.ftTransfer` signs with the worker's demo key and runs the same
+ * `relay()`. A refusal comes back as a thrown "relay rejected: {...}"; this turns it into a message.
+ */
+export async function nearChainTransfer(
+  chain: ChainClient,
+  from: AccountId,
+  to: AccountId,
+  amount: Units,
+  memo: string,
+): Promise<TransferResult> {
+  try {
+    const tx = await chain.ftTransfer({ role: "worker", accountId: from }, to, amount, memo);
+    if (tx.ok) return { ok: true, txHash: tx.txHash };
+    return { ok: false, rule: "unavailable", message: "The transfer was rejected. Try again." };
+  } catch (error) {
+    const body = /^relay rejected: (\{.*\})$/.exec(
+      error instanceof Error ? error.message : "",
+    )?.[1];
+    const rule = body ? (JSON.parse(body) as { rule?: RuleName }).rule : undefined;
+    if (rule && rule in REFUSAL) return { ok: false, rule, message: REFUSAL[rule] };
+    return { ok: false, rule: "unavailable", message: "The relayer is unavailable. Try again." };
+  }
+}
+
+/** For server actions. */
 export async function workerTransfer(
   from: AccountId,
   to: AccountId,
@@ -129,7 +154,7 @@ export async function workerTransfer(
 ): Promise<TransferResult> {
   const env = getEnv();
   if (env.chainClient !== "fake") {
-    throw new Error("Worker transfers on testnet go through POST /api/relay (on-chain dev)");
+    return nearChainTransfer(getChainClient(), from, to, amount, memo);
   }
   return fakeChainTransfer(
     getChainClient(),
