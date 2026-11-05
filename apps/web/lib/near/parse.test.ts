@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { InvoiceHash } from "@homeroll/shared";
-import {
-  parseEmployer,
-  parseInvoice,
-  parsePayees,
-  parsePool,
-  parseRuns,
-} from "./parse";
+import { parseEmployer, parseInvoice, parsePayees, parsePool, parseRuns } from "./parse";
 
-const HASH = "abc" as InvoiceHash;
+const HASH = "abc";
 
 describe("parsePayees", () => {
   it("maps null to an empty list", () => {
@@ -16,17 +9,17 @@ describe("parsePayees", () => {
   });
 
   it("throws when cap is a JSON number", () => {
-    expect(() =>
-      parsePayees([{ account_id: "w-1.testnet", cap: 1, active_from: "0" }]),
-    ).toThrow(/must not be a JSON number/);
+    expect(() => parsePayees([{ account_id: "w-1.testnet", cap: 1, active_from: "0" }])).toThrow(
+      /must not be a JSON number/,
+    );
   });
 });
 
 describe("parseEmployer", () => {
   it("throws when treasury is a JSON number", () => {
-    expect(() => parseEmployer({ treasury: 1, buffer: "0", onboarding: false, payee_count: 0 })).toThrow(
-      /treasury must not be a JSON number/,
-    );
+    expect(() =>
+      parseEmployer({ treasury: 1, buffer: "0", onboarding: false, payee_count: 0 }),
+    ).toThrow(/treasury must not be a JSON number/);
   });
 });
 

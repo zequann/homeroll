@@ -542,6 +542,30 @@ export async function callMethod(
   return { txHash: outcome.transaction_outcome.id };
 }
 
+/**
+ * Like `callMethod`, plus the failures of receipts after the first. A panic in a callee such as
+ * `ft_on_transfer` is refunded by the token, so the transaction itself still succeeds.
+ */
+export async function callMethodWithReceipts(
+  signer: { accountId: string; secretKey: string },
+  receiverId: string,
+  call: { method: string; args: Record<string, unknown>; gas: bigint; depositYocto: bigint },
+): Promise<{ txHash: string; receiptFailures: string[] }> {
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId,
+    actions: [actions.functionCall(call.method, call.args, call.gas, call.depositYocto)],
+    waitUntil: "FINAL",
+  });
+  const receiptFailures: string[] = [];
+  for (const receipt of outcome.receipts_outcome) {
+    const status = receipt.outcome.status;
+    if (typeof status === "object" && status !== null && "Failure" in status) {
+      receiptFailures.push(JSON.stringify(status.Failure));
+    }
+  }
+  return { txHash: outcome.transaction_outcome.id, receiptFailures };
+}
+
 export async function accessKeyList(accountId: string): Promise<unknown> {
   return provider().viewAccessKeyList({ accountId });
 }

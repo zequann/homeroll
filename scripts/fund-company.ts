@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import { loadFixtures } from "../fixtures/index.ts";
-import { adminSigner } from "../apps/web/lib/keys.ts";
 import {
   applyFundAction,
   companyFloors,
@@ -9,8 +7,11 @@ import {
   readFundEnv,
   readFundSnapshot,
 } from "../apps/web/lib/fund/plan.ts";
+import { adminSigner, deriveKey } from "../apps/web/lib/keys.ts";
 import { configureRpc } from "../apps/web/lib/near/rpc.ts";
 import { loadEnvLocal } from "../apps/web/lib/seed/shell.ts";
+import { loadFixtures } from "../fixtures/index.ts";
+import { homerollAccounts } from "../packages/shared/src/index.ts";
 
 const env = readFundEnv({ ...loadEnvLocal("apps/web/.env.local"), ...process.env });
 if (!env.ok) {
@@ -25,9 +26,19 @@ if (!admin) {
   process.exit(2);
 }
 
+if (!env.input.seedHex) {
+  console.log(JSON.stringify({ ok: false, reason: "seed_missing" }));
+  process.exit(2);
+}
+
 const fixtures = loadFixtures(env.input.root);
 const floors = companyFloors(fixtures);
-const accounts = fundAccounts(env.input.root, fixtures.company.ownerLabel);
+const escrow = homerollAccounts(env.input.root).escrow;
+const accounts = fundAccounts(
+  env.input.root,
+  deriveKey(env.input.seedHex, escrow, "escrow").publicKey,
+  fixtures.company.ownerLabel,
+);
 
 let actions = planFund(await readFundSnapshot(accounts), floors, accounts);
 for (const action of actions) await applyFundAction(action, admin);

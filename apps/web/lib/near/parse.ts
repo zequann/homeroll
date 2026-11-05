@@ -1,5 +1,4 @@
-import type { InvoiceHash } from "@homeroll/shared";
-import { units, type Units } from "@/lib/fx";
+import { type Units, units } from "@/lib/fx";
 import type {
   AccessKeyView,
   EmployerView,
@@ -65,7 +64,14 @@ export function parseEmployer(raw: unknown): EmployerView | null {
 }
 
 function parseLineStatus(value: unknown): RunView["lines"][number]["status"] {
-  if (value === "Reserved" || value === "Sent" || value === "Paid" || value === "Failed" || value === "Skipped" || value === "Cancelled") {
+  if (
+    value === "Reserved" ||
+    value === "Sent" ||
+    value === "Paid" ||
+    value === "Failed" ||
+    value === "Skipped" ||
+    value === "Cancelled"
+  ) {
     return value;
   }
   throw new Error(`unknown line status ${String(value)}`);
@@ -80,7 +86,8 @@ export function parseRuns(raw: unknown): RunView[] | null {
   if (raw === null || raw === undefined) return null;
   if (!Array.isArray(raw)) throw new Error("runs must be an array or null");
   return raw.map((run, runIndex) => {
-    if (typeof run !== "object" || run === null) throw new Error(`run ${runIndex} is not an object`);
+    if (typeof run !== "object" || run === null)
+      throw new Error(`run ${runIndex} is not an object`);
     const record = run as Record<string, unknown>;
     const linesRaw = record.lines;
     if (!Array.isArray(linesRaw)) throw new Error(`run ${runIndex} missing lines`);
@@ -115,7 +122,7 @@ function parseInvoiceStatus(value: unknown): InvoiceStatus {
   throw new Error(`unknown invoice status ${String(value)}`);
 }
 
-export function parseInvoice(raw: unknown, invoiceHash: InvoiceHash): InvoiceView | null {
+export function parseInvoice(raw: unknown, invoiceHash: string): InvoiceView | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw !== "object") throw new Error("invoice must be an object or null");
   const record = raw as Record<string, unknown>;
@@ -134,9 +141,7 @@ export function parseInvoice(raw: unknown, invoiceHash: InvoiceHash): InvoiceVie
     grade,
     status: parseInvoiceStatus(record.status),
     advance:
-      advanceRaw === null || advanceRaw === undefined
-        ? null
-        : parseUnits("advance", advanceRaw),
+      advanceRaw === null || advanceRaw === undefined ? null : parseUnits("advance", advanceRaw),
     fee: feeRaw === null || feeRaw === undefined ? null : parseUnits("fee", feeRaw),
   };
 }
@@ -156,11 +161,15 @@ export function parseAccessKeys(accountId: string, raw: unknown): AccessKeyView[
     throw new Error("access key list is missing keys");
   }
   return raw.keys.map((item) => {
-    if (typeof item !== "object" || item === null) throw new Error("access key entry is not an object");
+    if (typeof item !== "object" || item === null)
+      throw new Error("access key entry is not an object");
     const row = item as { public_key?: unknown; access_key?: { permission?: unknown } };
     if (typeof row.public_key !== "string") throw new Error("access key entry has no public key");
     const permission = row.access_key?.permission;
-    if (permission === "FullAccess" || (typeof permission === "object" && permission !== null && "FullAccess" in permission)) {
+    if (
+      permission === "FullAccess" ||
+      (typeof permission === "object" && permission !== null && "FullAccess" in permission)
+    ) {
       return { accountId, publicKey: row.public_key, permission: { kind: "FullAccess" as const } };
     }
     const inner =

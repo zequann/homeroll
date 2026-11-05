@@ -463,6 +463,8 @@ interface RemitRoute {
 | Cross-chain deposit delivery (P1) | `POST /api/mock/deposit` → `solver.<root>` sends tUSDC | Solvers delivering a NEAR Intents swap |
 | FX | `lib/fx` constants | FX feed |
 
+On testnet the buyer's bank transfer into escrow is not simulated per call. `escrow.<root>` already holds tUSDC for one payment of each fixture invoice, and `scripts/fund-company.ts` tops it back up. That script also creates the account and calls `pool.add_settler` for it.
+
 Every mock response carries `"mock": true`. Every UI element backed by a mock shows a badge naming what is mocked: **"Mock partner"**, "Mock model" for the invoice model, "Mock delivery" for cross-chain deposits.
 
 ### 8.7 Storage — Supabase (free tier)

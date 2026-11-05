@@ -1,17 +1,13 @@
 import { join } from "node:path";
-import {
-  homerollAccounts,
-  parseContractError,
-  type AccountId,
-  type InvoiceHash,
-} from "@homeroll/shared";
+import { type AccountId, homerollAccounts, parseContractError } from "@homeroll/shared";
 import { getEnv } from "@/lib/env";
-import { type Units } from "@/lib/fx";
+import type { Units } from "@/lib/fx";
 import { deriveKey } from "@/lib/keys";
 import { ExposureLog } from "@/lib/relay/exposure";
 import { relay } from "@/lib/relay/relay";
 import type {
   AccessKeyView,
+  Attestation,
   ChainClient,
   EmployerView,
   InvoiceView,
@@ -21,22 +17,11 @@ import type {
   PoolView,
   ProtocolFailureName,
   RunView,
+  SettleOutcome,
   Signer,
   Tx,
   TxFailure,
 } from "./client";
-import {
-  accessKey,
-  accessKeyList,
-  blockHeight,
-  callMethod,
-  callMethods,
-  configureRpc,
-  ftBalanceOf as rpcFtBalance,
-  signDelegate,
-  submitDelegate,
-  viewFunction,
-} from "./rpc";
 import {
   parseAccessKeys,
   parseEmployer,
@@ -45,6 +30,19 @@ import {
   parsePool,
   parseRuns,
 } from "./parse";
+import {
+  accessKey,
+  accessKeyList,
+  blockHeight,
+  callMethod,
+  callMethods,
+  callMethodWithReceipts,
+  configureRpc,
+  ftBalanceOf as rpcFtBalance,
+  signDelegate,
+  submitDelegate,
+  viewFunction,
+} from "./rpc";
 
 const NOT_BUILT = "NearChainClient is not built yet (on-chain dev, SPEC §8.8)";
 
@@ -54,18 +52,25 @@ const NOT_BUILT = "NearChainClient is not built yet (on-chain dev, SPEC §8.8)";
 const GAS_PAY_RUN = 970n * 1_000_000_000_000n;
 const GAS_REQUEST_ADVANCE = 150n * 1_000_000_000_000n;
 const GAS_FT_TRANSFER = 15n * 1_000_000_000_000n;
+// ft_on_transfer forwards the rest with 65 Tgas plus a 20 Tgas callback, and the token resolves after.
+const GAS_SETTLE = 200n * 1_000_000_000_000n;
 
 const exposure = ExposureLog.files(join(process.cwd(), ".data", "relay-near-client"));
 
-function txFailureFromMessage(message: string): TxFailure {
-  const protocols: ProtocolFailureName[] = [
-    "RequiresFullAccess",
-    "DepositWithFunctionCall",
+// The RPC names each rejection; near-api-js 7.4 rethrows it as this sentence instead.
+const PROTOCOL_FAILURES: readonly [ProtocolFailureName, RegExp][] = [
+  ["RequiresFullAccess", /RequiresFullAccess|Access key requires full access/],
+  ["DepositWithFunctionCall", /DepositWithFunctionCall|Deposit is not allowed with function call/],
+  [
     "ReceiverMismatch",
-    "MethodNameMismatch",
-  ];
-  for (const name of protocols) {
-    if (message.includes(name)) return { kind: "protocol", name };
+    /ReceiverMismatch|Access key receiver .* does not match transaction receiver/,
+  ],
+  ["MethodNameMismatch", /MethodNameMismatch|Access key does not allow method/],
+];
+
+export function txFailureFromMessage(message: string): TxFailure {
+  for (const [name, pattern] of PROTOCOL_FAILURES) {
+    if (pattern.test(message)) return { kind: "protocol", name };
   }
   const contract = parseContractError(message);
   if (contract) return { kind: "contract", error: contract };
@@ -88,6 +93,30 @@ function ownerSigner(employer: AccountId) {
 
 function workerSigner(accountId: AccountId) {
   return deriveKey(requireSeed(), accountId, "worker");
+}
+
+/** The key the server holds for this signer. Lenders sign in their own wallet. */
+function keyFor(signer: Signer) {
+  const seed = requireSeed();
+  switch (signer.role) {
+    case "owner":
+      return deriveKey(seed, signer.accountId, "owner");
+    case "payrollAgent":
+      return deriveKey(seed, signer.accountId, "payrollAgent");
+    case "invoiceAgent":
+      return deriveKey(seed, signer.accountId, "invoiceAgent");
+    case "settler":
+      return deriveKey(seed, signer.accountId, "escrow");
+    case "worker":
+      return deriveKey(seed, signer.accountId, "worker");
+    case "lender":
+      return null;
+  }
+}
+
+function failed(error: unknown): { ok: false; txHash: null; failure: TxFailure } {
+  const message = error instanceof Error ? error.message : String(error);
+  return { ok: false, txHash: null, failure: txFailureFromMessage(message) };
 }
 
 export class NearChainClient implements ChainClient {
@@ -114,7 +143,7 @@ export class NearChainClient implements ChainClient {
     return parseRuns(raw);
   }
 
-  async getInvoice(invoiceHash: InvoiceHash): Promise<InvoiceView | null> {
+  async getInvoice(invoiceHash: string): Promise<InvoiceView | null> {
     const raw = await viewFunction(this.accounts.pool, "get_invoice", {
       invoice_hash: invoiceHash,
     });
@@ -139,7 +168,11 @@ export class NearChainClient implements ChainClient {
     lines: PayLine[],
   ): Promise<Tx<{ runId: number }>> {
     if (signer.role !== "payrollAgent" && signer.role !== "owner") {
-      return { ok: false, txHash: null, failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } } };
+      return {
+        ok: false,
+        txHash: null,
+        failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } },
+      };
     }
     const key = payrollSigner(signer.accountId);
     try {
@@ -170,16 +203,80 @@ export class NearChainClient implements ChainClient {
   cancelRun(): never {
     throw new Error(NOT_BUILT);
   }
-  attestInvoice(): never {
-    throw new Error(NOT_BUILT);
+  async attestInvoice(signer: Signer, a: Attestation): Promise<Tx<InvoiceView>> {
+    const key = keyFor(signer);
+    if (!key) {
+      return {
+        ok: false,
+        txHash: null,
+        failure: { kind: "contract", error: { code: "ERR_NOT_AGENT" } },
+      };
+    }
+    try {
+      const { txHash } = await callMethods(key, this.accounts.pool, [
+        {
+          method: "attest_invoice",
+          args: {
+            invoice_hash: a.invoiceKey,
+            employer: a.employer,
+            buyer_hash: a.buyerHash,
+            amount: a.amount.toString(),
+            due_ts: a.dueTs.toString(),
+            grade: a.grade,
+            attestation_ref: a.attestationRef,
+          },
+        },
+      ]);
+      const view = await this.getInvoice(a.invoiceKey);
+      if (!view) throw new Error("attest_invoice succeeded but invoice missing");
+      return { ok: true, txHash, value: view };
+    } catch (err) {
+      return failed(err);
+    }
   }
-  settleInvoice(): never {
-    throw new Error(NOT_BUILT);
+
+  async settleInvoice(signer: Signer, invoiceKey: string, paid: Units): Promise<Tx<SettleOutcome>> {
+    const key = keyFor(signer);
+    if (!key) {
+      return {
+        ok: false,
+        txHash: null,
+        failure: { kind: "contract", error: { code: "ERR_NOT_SETTLER" } },
+      };
+    }
+    try {
+      const before = await this.getInvoice(invoiceKey);
+      const { txHash, receiptFailures } = await callMethodWithReceipts(key, this.accounts.tusdc, {
+        method: "ft_transfer_call",
+        args: {
+          receiver_id: this.accounts.pool,
+          amount: paid.toString(),
+          msg: JSON.stringify({ settle: { invoice_hash: invoiceKey } }),
+        },
+        gas: GAS_SETTLE,
+        depositYocto: 1n,
+      });
+      for (const failure of receiptFailures) {
+        const error = parseContractError(failure);
+        if (error) return { ok: false, txHash, failure: { kind: "contract", error } };
+      }
+      const after = await this.getInvoice(invoiceKey);
+      if (before?.status === "Advanced" && after?.status === "Settled") {
+        return { ok: true, txHash, value: { settled: true, invoice: after } };
+      }
+      return { ok: true, txHash, value: { settled: false } };
+    } catch (err) {
+      return failed(err);
+    }
   }
 
   async payRun(signer: Signer, runId: number): Promise<Tx<RunView>> {
     if (signer.role !== "payrollAgent" && signer.role !== "owner") {
-      return { ok: false, txHash: null, failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } } };
+      return {
+        ok: false,
+        txHash: null,
+        failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } },
+      };
     }
     const key = payrollSigner(signer.accountId);
     try {
@@ -193,7 +290,8 @@ export class NearChainClient implements ChainClient {
       let view = (await this.getRuns(signer.accountId, period))?.find((r) => r.runId === runId);
       if (!view) throw new Error("pay_run succeeded but run missing");
       if (view.lines.some((l) => l.status === "Sent")) {
-        view = (await this.getRuns(signer.accountId, period))?.find((r) => r.runId === runId) ?? view;
+        view =
+          (await this.getRuns(signer.accountId, period))?.find((r) => r.runId === runId) ?? view;
       }
       return { ok: true, txHash, value: view };
     } catch (err) {
@@ -204,11 +302,15 @@ export class NearChainClient implements ChainClient {
 
   async requestAdvance(
     signer: Signer,
-    invoiceHash: InvoiceHash,
+    invoiceHash: string,
     amount: Units,
   ): Promise<Tx<InvoiceView>> {
     if (signer.role !== "owner") {
-      return { ok: false, txHash: null, failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } } };
+      return {
+        ok: false,
+        txHash: null,
+        failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } },
+      };
     }
     const key = ownerSigner(signer.accountId);
     try {

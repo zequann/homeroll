@@ -1,29 +1,66 @@
 import { loadFixtures } from "@homeroll/fixtures";
 import { describe, expect, it } from "vitest";
 import { sen, senToUnits, units } from "@/lib/fx";
-import { companyFloors, fundAccounts, planFund, type FundSnapshot } from "./plan";
+import { companyFloors, type FundSnapshot, fundAccounts, planFund } from "./plan";
 
 const ROOT = "homeroll.testnet";
 const fixtures = loadFixtures(ROOT);
 const floors = companyFloors(fixtures);
-const accounts = fundAccounts(ROOT);
+const ESCROW_KEY = "ed25519:11111111111111111111111111111111";
+const accounts = fundAccounts(ROOT, ESCROW_KEY);
+
+const met: FundSnapshot = {
+  poolCash: floors.poolCash,
+  maxBuyerExposure: floors.maxBuyerExposure,
+  treasury: floors.treasury,
+  funderBalance: units(floors.poolCash + floors.treasury),
+  payrollRegistered: true,
+  poolRegistered: true,
+  funderRegistered: true,
+  escrowExists: true,
+  escrowRegistered: true,
+  escrowBalance: floors.escrowFloat,
+};
 
 describe("planFund", () => {
   it("returns no actions when floors are already met", () => {
-    const snapshot: FundSnapshot = {
-      poolCash: floors.poolCash,
-      maxBuyerExposure: floors.maxBuyerExposure,
-      treasury: floors.treasury,
-      funderBalance: units(floors.poolCash + floors.treasury),
-      payrollRegistered: true,
-      poolRegistered: true,
-      funderRegistered: true,
-    };
-    expect(planFund(snapshot, floors, accounts)).toEqual([]);
+    expect(planFund(met, floors, accounts)).toEqual([]);
+  });
+
+  it("creates escrow with the derived key and makes it a settler in the same plan", () => {
+    const actions = planFund(
+      { ...met, escrowExists: false, escrowRegistered: false, escrowBalance: units(0n) },
+      floors,
+      accounts,
+    );
+    expect(actions.map((a) => a.kind)).toEqual([
+      "createEscrow",
+      "addSettler",
+      "storageDeposit",
+      "mintTo",
+    ]);
+    expect(actions[0]).toMatchObject({
+      accountId: "escrow.homeroll.testnet",
+      publicKey: ESCROW_KEY,
+    });
+    expect(actions[3]).toMatchObject({
+      accountId: "escrow.homeroll.testnet",
+      amount: floors.escrowFloat,
+    });
+  });
+
+  it("tops escrow up to one payment of every fixture invoice", () => {
+    const total = fixtures.invoices.reduce((sum, i) => sum + senToUnits(sen(i.amountSen)), 0n);
+    expect(floors.escrowFloat).toBe(total);
+    const actions = planFund({ ...met, escrowBalance: units(total - 5n) }, floors, accounts);
+    expect(actions).toEqual([
+      { kind: "mintTo", accountId: "escrow.homeroll.testnet", tusdc: accounts.tusdc, amount: 5n },
+    ]);
   });
 
   it("plans mint, treasury credit, and pool deposit for an empty chain", () => {
     const snapshot: FundSnapshot = {
+      ...met,
       poolCash: units(0n),
       maxBuyerExposure: units(0n),
       treasury: units(0n),
