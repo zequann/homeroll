@@ -26,3 +26,15 @@ export function invoiceResults(): Map<string, InvoiceAgentResult> {
   globalForResults.__homerollInvoiceResults ??= new Map();
   return globalForResults.__homerollInvoiceResults;
 }
+
+/**
+ * Keeps the report the invoice's row shows. A re-run the registry refuses must not hide the first
+ * check, and a different document with the same number (an edited amount) is not this invoice.
+ */
+export function rememberInvoiceResult(result: InvoiceAgentResult, fixtureHash: string): void {
+  if (result.invoiceKey !== fixtureHash) return;
+  const results = invoiceResults();
+  if (result.attest.ok || !results.has(result.invoiceNumber)) {
+    results.set(result.invoiceNumber, result);
+  }
+}

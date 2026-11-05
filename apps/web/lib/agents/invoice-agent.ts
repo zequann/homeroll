@@ -94,6 +94,13 @@ export function offerFor(amountSen: Sen, grade: Grade): AdvanceOffer | null {
   };
 }
 
+/** The document could not be used at all: nothing was checked or registered. */
+export class InvoiceNotReadable extends Error {
+  constructor(readonly reason: "unreadable" | "unknown-invoice") {
+    super(reason);
+  }
+}
+
 export async function runInvoiceAgent(
   deps: InvoiceAgentDeps,
   documentText: string,
@@ -102,13 +109,15 @@ export async function runInvoiceAgent(
 
   // 1. Extract. The raw output is untrusted: parse strictly, drop unknown fields.
   const raw = await inference.extract(buildExtractionPrompt(documentText));
-  const parsed = modelOutputSchema.parse(raw);
+  const output = modelOutputSchema.safeParse(raw);
+  if (!output.success) throw new InvoiceNotReadable("unreadable");
+  const parsed = output.data;
   const droppedFields =
     raw && typeof raw === "object" ? Object.keys(raw).filter((k) => !(k in parsed)) : [];
 
   // Evidence is looked up by what the document claims, then compared in code.
   const evidence = fixtures.invoices.find((i) => i.number === parsed.invoiceNo);
-  if (!evidence) throw new Error(`No synthetic evidence for ${parsed.invoiceNo}`);
+  if (!evidence) throw new InvoiceNotReadable("unknown-invoice");
   const invoiceKey = invoiceHash({
     sellerTin: parsed.sellerTin,
     buyerTin: parsed.buyerTin,
