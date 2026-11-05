@@ -53,8 +53,8 @@ describe("payroll agent proposal (SPEC §8.2)", () => {
     await chain.payRun(agent, run.value.runId);
     await chain.cancelRun(owner, run.value.runId);
     const next = await proposePayroll(chain, fixtures, OCT, NOW);
-    expect(next.held).toHaveLength(36);
-    expect(next.lines).toHaveLength(4);
+    expect(next.held).toHaveLength(20);
+    expect(next.lines).toHaveLength(20);
     expect((await chain.submitRun(agent, OCT, next.lines)).ok).toBe(true);
   });
 

@@ -30,7 +30,7 @@ import type {
 import { failureText } from "./failure";
 
 /** The contract's `max_lines_per_call` (SPEC §7.3). 40 workers take two calls; Rahim is in the first. */
-export const FAKE_MAX_LINES_PER_CALL = 36;
+export const FAKE_MAX_LINES_PER_CALL = 20;
 /** The demo floor (SPEC §7.3 initial config). */
 const MAX_LINES_PER_RUN = 40;
 const YOCTO_PER_NEAR = 10n ** 24n;
