@@ -2,7 +2,7 @@ import { Money } from "@/components/Money";
 import type { ActivityRow } from "@/lib/views/owner";
 import styles from "./owner.module.css";
 
-/** Newest first. Hashes are fake in fake mode, so there is no explorer link. */
+/** Newest first. Hashes are fake in fake mode, so only testnet rows get an explorer link. */
 export function Activity({ rows }: { rows: ActivityRow[] }) {
   if (rows.length === 0) {
     return (
@@ -54,6 +54,13 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
                 ) : (
                   <span className={styles.ok}>Success</span>
                 )}
+                {row.explorerUrl ? (
+                  <div className="t-caption">
+                    <a href={row.explorerUrl} target="_blank" rel="noreferrer">
+                      View on explorer
+                    </a>
+                  </div>
+                ) : null}
               </td>
             </tr>
           ))}
