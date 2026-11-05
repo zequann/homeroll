@@ -32,10 +32,13 @@ export function Workers({
   rows,
   connected,
   onboarding,
+  canEdit,
 }: {
   rows: PayeeRow[];
   connected: boolean;
   onboarding: boolean;
+  /** False while the deployed contract has no remove_payee. */
+  canEdit: boolean;
 }) {
   const [pending, start] = useTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
@@ -55,7 +58,12 @@ export function Workers({
 
   return (
     <div className={styles.workers}>
-      {connected ? (
+      {!canEdit ? (
+        <p className="t-caption ink-3">
+          Adding and removing payees is not available on testnet yet: the deployed contract does not
+          have those methods.
+        </p>
+      ) : connected ? (
         <form
           className={styles.payeeForm}
           onSubmit={(e) => {
@@ -164,7 +172,7 @@ export function Workers({
                   ) : null}
                 </td>
                 <td className={styles.num}>
-                  {connected ? (
+                  {connected && canEdit ? (
                     row.status === "Removed" ? (
                       <Button
                         variant="plain"

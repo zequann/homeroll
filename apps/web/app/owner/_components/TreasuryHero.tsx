@@ -30,11 +30,21 @@ export interface TreasuryHeroProps {
   facts: RunFacts;
   /** The owner demo account is connected, so the page can sign. */
   connected: boolean;
+  /** False while the deployed contract has no cancel_run. */
+  canCancel?: boolean;
 }
 
 export function TreasuryHero(props: TreasuryHeroProps) {
-  const { companyName, treasurySen, treasuryUsdc, bufferSen, periodLabel, facts, connected } =
-    props;
+  const {
+    companyName,
+    treasurySen,
+    treasuryUsdc,
+    bufferSen,
+    periodLabel,
+    facts,
+    connected,
+    canCancel = true,
+  } = props;
   const router = useRouter();
   const [local, setLocal] = useState<LocalPhase>(IDLE);
   const [pending, start] = useTransition();
@@ -155,7 +165,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               Reserve only
             </Button>
           ) : null}
-          {state.kind === "paying" && !state.inFlight && connected ? (
+          {state.kind === "paying" && !state.inFlight && connected && canCancel ? (
             <Button variant="plain" disabled={pending} onClick={() => cancel(state.runId)}>
               Cancel run
             </Button>

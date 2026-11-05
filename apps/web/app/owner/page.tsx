@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Money } from "@/components/Money";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { Segmented } from "@/components/Segmented";
 import { readSession } from "@/lib/session";
@@ -64,7 +65,29 @@ export default async function OwnerPage({
             periodLabel={view.periodLabel}
             facts={view.facts}
             connected={connected}
+            canCancel={view.canEditPayees}
           />
+
+          <dl className={styles.stats}>
+            <div>
+              <dt className="t-caption ink-3">Advanced against invoices</dt>
+              <dd>
+                <Money value={view.advancedSen} />
+              </dd>
+            </div>
+            <div>
+              <dt className="t-caption ink-3">Payroll due</dt>
+              <dd>
+                <Money value={view.payrollDueSen} />
+              </dd>
+            </div>
+            <div>
+              <dt className="t-caption ink-3">Lender pool available</dt>
+              <dd>
+                <Money value={view.poolCashSen} />
+              </dd>
+            </div>
+          </dl>
 
           <div className={styles.tabs}>
             <Segmented
@@ -77,7 +100,12 @@ export default async function OwnerPage({
           {tab === "pay-lines" ? <PayLines rows={view.payLines} connected={connected} /> : null}
           {tab === "invoices" ? <Invoices rows={view.invoices} connected={connected} /> : null}
           {tab === "workers" ? (
-            <Workers rows={view.payees} connected={connected} onboarding={view.onboarding} />
+            <Workers
+              rows={view.payees}
+              connected={connected}
+              onboarding={view.onboarding}
+              canEdit={view.canEditPayees}
+            />
           ) : null}
           {tab === "agent-keys" ? <AgentKeys keys={view.keys} mode={view.mode} /> : null}
           {tab === "activity" ? <Activity rows={view.activity} /> : null}

@@ -84,6 +84,7 @@ export interface ActivityRow {
   usdc: string | null;
   rmHint: Sen | null;
   failure: string | null;
+  explorerUrl: string | null;
 }
 
 export interface OwnerView {
@@ -101,6 +102,14 @@ export interface OwnerView {
   invoices: InvoiceRow[];
   keys: KeyRow[];
   activity: ActivityRow[];
+  /** Advances taken and not yet settled. */
+  advancedSen: Sen;
+  /** The whole period's payroll. */
+  payrollDueSen: Sen;
+  /** Cash the pool can still lend. */
+  poolCashSen: Sen;
+  /** False where the contract does not have the method yet, so the UI hides the control. */
+  canEditPayees: boolean;
 }
 
 const STATUS_WORD: Record<LineStatus, PayLineStatus> = {
@@ -127,7 +136,8 @@ export async function loadOwnerView(): Promise<OwnerView> {
   const payrollPeriod = period(fixtures.company.period);
   const accounts = homerollAccounts(getEnv().root);
 
-  const [employerView, runs, ownerKeys, agentKeys, ...invoiceViews] = await Promise.all([
+  const [pool, employerView, runs, ownerKeys, agentKeys, ...invoiceViews] = await Promise.all([
+    chain.getPool(),
     chain.getEmployer(employer),
     chain.getRuns(employer, payrollPeriod),
     chain.getAccessKeys(employer),
@@ -256,6 +266,19 @@ export async function loadOwnerView(): Promise<OwnerView> {
     payLines,
     payees,
     onboarding: employerView.onboarding,
+    advancedSen: unitsToSen(
+      units(
+        invoiceViews.reduce(
+          (sum, i) => sum + (i?.status === "Advanced" && i.advance ? i.advance : 0n),
+          0n,
+        ),
+      ),
+      "nearest",
+    ),
+    payrollDueSen: facts.periodTotalSen ?? facts.totalSen,
+    poolCashSen: unitsToSen(pool.cash, "nearest"),
+    // remove_payee and cancel_run are not in the deployed contract yet (SPEC §7.3)
+    canEditPayees: chain.network === "fake",
     invoices,
     keys: [...agentKeysFor(ownerKeys), ...agentKeysFor(agentKeys)],
     activity: getActivityLog()
@@ -269,6 +292,10 @@ export async function loadOwnerView(): Promise<OwnerView> {
         usdc: a.amount === null ? null : formatUsdc(units(a.amount)),
         rmHint: a.amount === null ? null : unitsToSen(units(a.amount), "nearest"),
         failure: a.failure,
+        explorerUrl:
+          chain.network === "testnet" && a.txHash
+            ? `https://testnet.nearblocks.io/txns/${a.txHash}`
+            : null,
       })),
   };
 }
