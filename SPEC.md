@@ -866,7 +866,9 @@ Follow `HACKATHON.md` for the exact field rules.
 11. The payout partner's 1.0% all-in fee (including FX margin) is an assumption, not a quote.
 12. Lender privacy hides who a lender is, not how much they lend. Pool deposits and share balances are public, and a deposit can be matched by amount and time to the swap that funded it. The mock solver's limits (§8.9, R16) are server policy, kept in memory per server instance.
 13. Confidential Intents isn't available on testnet, so Homeroll simulates that layer. The payouts you see are real testnet transfers and are publicly visible. In production they settle on NEAR's private shard. Even then, while the payroll contract runs on the public chain, `submit_run` shows every wage (Q10). The payout rail's used nonces and quotes live in memory per server instance. The approval that lets `pay_run` batches go ahead is a sealed token, so it works across instances.
+14. The demo pays October 2026 (`fixtures/company.json`). The contract only accepts the current or previous month (R14), so from 1 December 2026 Run payroll needs that period moved forward.
 15. `update_cap` and `withdraw` (§7.3) are not in the payroll contract yet. The app does not call them.
+16. The app keeps some state in memory and in `apps/web/.data/`: the live demo company, relayer limits, activity log, mock receipts and payout quotes. Run it as one long-lived server (`pnpm --filter web build && pnpm --filter web start`). Serverless hosting would need that state moved to storage such as Supabase (§8.7).
 
 ### Future roadmap
 

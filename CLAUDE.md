@@ -76,11 +76,12 @@ pnpm lint                 # biome check (pnpm format fixes)
 pnpm typecheck            # tsc in every package
 pnpm attacks              # six SPEC §11 attacks on the live testnet company; exit 0 = each was refused and moved no money
 CHAIN_CLIENT=fake pnpm dev   # Next.js on fixture data, no chain needed
-pnpm dev                  # (planned) Next.js against testnet (needs .env.local)
+pnpm dev                  # Next.js against testnet (needs apps/web/.env.local, see .env.example)
 pnpm deploy:testnet       # idempotent deploy of tusdc, factory, payroll, pool to testnet
 pnpm prove:relay          # POST a signed worker ft_transfer to /api/relay on a running server
-pnpm seed                 # (planned) synthetic company, 40 workers, invoices, lenders
-pnpm demo:reset           # (planned) fresh demo company on testnet, same steps as the Reset demo button (SPEC §9.6)
+pnpm seed:testnet         # registers the fixture employer and its 40 workers on testnet (idempotent)
+pnpm demo:reset           # fresh demo company on testnet, same steps as the Reset demo button (SPEC §9.6)
+node --experimental-strip-types scripts/upgrade-payroll-testnet.ts   # swap payroll.<root> to the wasm from pnpm build:contracts (state kept; layout must not change)
 pnpm demo                 # (planned, P1) local sandbox + deploy + seed + app, all mocks
 ```
 
