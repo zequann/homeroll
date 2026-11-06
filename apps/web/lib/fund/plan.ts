@@ -13,6 +13,7 @@ import {
   viewAccount,
   viewFunction,
 } from "../near/rpc.ts";
+import { maxAdvanceBps } from "../pool-grades.ts";
 
 export type FundSnapshot = {
   readonly poolCash: Units;
@@ -82,12 +83,17 @@ const GAS_FT_CALL = 100n * 1_000_000_000_000n;
 const ESCROW_FUND_YOCTO = 2n * 10n ** 24n;
 
 export function companyFloors(fixtures: Fixtures): FundFloors {
-  const advance = senToUnits(sen(12_000_000));
+  // Each invoice's largest advance at its demo grade: RM120,000 (A), RM25,200 (C), none (D)
+  const advances = fixtures.invoices.map((i) =>
+    senToUnits(sen(Math.floor((i.amountSen * maxAdvanceBps(i.expectedGrade)) / 10_000))),
+  );
   const invoices = fixtures.invoices.reduce((sum, i) => sum + senToUnits(sen(i.amountSen)), 0n);
   return {
-    poolCash: advance,
+    // The demo takes the Grade C advance first ("Short by RM39,400"), then Grade A: both must fit
+    poolCash: units(advances.reduce((sum, a) => sum + a, 0n)),
     treasury: senToUnits(sen(fixtures.company.treasurySen)),
-    maxBuyerExposure: advance,
+    // Each invoice has its own buyer, so the per-buyer limit needs the largest single advance (R11)
+    maxBuyerExposure: units(advances.reduce((max, a) => (a > max ? a : max), 0n)),
     escrowFloat: units(invoices),
   };
 }
