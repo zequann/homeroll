@@ -1,6 +1,6 @@
 import { homerollAccounts, workerAccountId } from "@homeroll/shared";
 import { type DeployInput, deployHomeroll, planCreateWorker, planMint } from "../deploy/deploy.ts";
-import { type Units } from "../fx/index.ts";
+import type { Units } from "../fx/index.ts";
 import { deriveKey } from "../keys.ts";
 import {
   accessKey,

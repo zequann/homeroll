@@ -114,16 +114,15 @@ function workerNameForSender(senderId: string, root: string): string | null {
 }
 
 function firstFailure(ctx: RuleContext): RuleName | null {
-  const delegate = ctx.decoded.ok ? ctx.decoded.delegate : null;
-
   // Rule 1
   if (!ctx.decoded.ok) return "one_action";
-  if (delegate!.actions.length !== 1) return "one_action";
-  const action = delegate!.actions[0];
-  if (!action || action.kind !== "functionCall") return "one_action";
+  const delegate = ctx.decoded.delegate;
+  if (delegate.actions.length !== 1) return "one_action";
+  const action = delegate.actions[0];
+  if (action?.kind !== "functionCall") return "one_action";
 
   // Rule 2
-  if (delegate!.receiverId !== ctx.accounts.tusdc || action.method !== "ft_transfer") {
+  if (delegate.receiverId !== ctx.accounts.tusdc || action.method !== "ft_transfer") {
     return "receiver_and_method";
   }
 
@@ -149,14 +148,14 @@ function firstFailure(ctx: RuleContext): RuleName | null {
   }
 
   // Rule 7 — signature and account id before the access-key view
-  if (!delegate!.signatureOk) return "known_worker";
-  if (workerNameForSender(delegate!.senderId, ctx.accounts.root) === null) return "known_worker";
+  if (!delegate.signatureOk) return "known_worker";
+  if (workerNameForSender(delegate.senderId, ctx.accounts.root) === null) return "known_worker";
 
   if (ctx.checkKey) {
     if (ctx.key === null || ctx.key.permission !== "FullAccess") return "known_worker";
-    if (delegate!.nonce <= ctx.key.nonce) return "known_worker";
-    if (delegate!.nonce > ctx.blockHeight * 1_000_000n) return "known_worker";
-    if (delegate!.maxBlockHeight <= ctx.blockHeight) return "known_worker";
+    if (delegate.nonce <= ctx.key.nonce) return "known_worker";
+    if (delegate.nonce > ctx.blockHeight * 1_000_000n) return "known_worker";
+    if (delegate.maxBlockHeight <= ctx.blockHeight) return "known_worker";
   }
 
   if (ctx.checkCaps) {
