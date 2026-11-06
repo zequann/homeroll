@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { runAll } from "./run";
 
 it(
-  "refuses all five attacks and moves no money",
+  "refuses all six attacks and moves no money",
   async () => {
     expect(await runAll()).toBe(0);
   },

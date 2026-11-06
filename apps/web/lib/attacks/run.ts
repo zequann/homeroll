@@ -48,7 +48,9 @@ export async function runPrinted(id: AttackId): Promise<number> {
         ? "none. The fake chain checked the key locally."
         : result.id === "05"
           ? "NEAR rejected the signed transaction before it was included."
-          : "The contract panicked after inclusion. No money moved.",
+          : result.id === "06"
+            ? "No pay_run was sent: the payout rail refused first."
+            : "The contract panicked after inclusion. No money moved.",
       outcome: refused ? "refused" : "unexpected",
     }),
   );

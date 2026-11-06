@@ -74,7 +74,7 @@ pnpm test:contracts       # cargo test: unit tests + sandbox integration tests (
 pnpm test                 # vitest in every package
 pnpm lint                 # biome check (pnpm format fixes)
 pnpm typecheck            # tsc in every package
-pnpm attacks              # five SPEC §11 attacks on the live testnet company; exit 0 = each was refused and moved no money
+pnpm attacks              # six SPEC §11 attacks on the live testnet company; exit 0 = each was refused and moved no money
 CHAIN_CLIENT=fake pnpm dev   # Next.js on fixture data, no chain needed
 pnpm dev                  # (planned) Next.js against testnet (needs .env.local)
 pnpm deploy:testnet       # idempotent deploy of tusdc, factory, payroll, pool to testnet

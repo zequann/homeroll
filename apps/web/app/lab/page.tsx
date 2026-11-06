@@ -51,6 +51,14 @@ export default function LabPage() {
             "The payroll agent's key signs tusdc.ft_transfer (with and without 1 yocto) and payroll.add_payee."
           }
         />
+        <AttackCard
+          id="06"
+          title="Tampered payout intent"
+          story={
+            "The payroll agent edits the owner's signed payout intent to pay Rahim's wage to rahim-wallet.testnet, signs it with its own key, then replays the owner's intent."
+          }
+          badge="Confidential layer: simulated"
+        />
       </div>
     </main>
   );
