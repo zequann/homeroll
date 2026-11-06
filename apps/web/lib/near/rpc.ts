@@ -451,14 +451,17 @@ function parseListedKeys(raw: unknown): readonly ListedKey[] {
 
 /** Balance plus every access key. `viewAccount` keeps full-access keys only. */
 export async function viewAccountState(accountId: string): Promise<ListedAccount> {
-  const account = await viewAccount(accountId);
-  if (!account.exists) return { kind: "absent" };
+  let balanceYocto: bigint;
+  try {
+    balanceYocto = (await provider().viewAccount({ accountId })).amount;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("does not exist") || msg.includes("UnknownAccount")) return { kind: "absent" };
+    throw err;
+  }
+  // Two RPC calls, not three: Reset demo checks 43 accounts this way, twice, on rate-limited RPCs
   const listed = await provider().viewAccessKeyList({ accountId });
-  return {
-    kind: "present",
-    balanceYocto: account.balanceYocto,
-    keys: parseListedKeys(listed),
-  };
+  return { kind: "present", balanceYocto, keys: parseListedKeys(listed) };
 }
 
 export async function viewFunction(

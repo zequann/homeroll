@@ -34,14 +34,14 @@ export default async function OwnerPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const [{ tab: rawTab }, view, rahim, session, payout] = await Promise.all([
-    searchParams,
-    loadOwnerView(),
-    loadRahimView(),
+  const tab = tabSchema.parse((await searchParams).tab);
+  const [view, session, payout] = await Promise.all([
+    loadOwnerView(tab),
     readSession(),
     loadPayoutPanel(getFixtures().company.accountId),
   ]);
-  const tab = tabSchema.parse(rawTab);
+  // The phone preview reuses the owner view's chain reads instead of asking again
+  const rahim = await loadRahimView(view.chainReads);
   const connected = session?.role === "Owner";
   const preview = { balanceSen: rahim.balanceSen, usdcHint: rahim.usdcHint, wage: rahim.wage };
 
