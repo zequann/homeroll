@@ -74,6 +74,16 @@ _Avoid_: bridge, on-ramp (an on-ramp turns bank money into crypto)
 A cross-chain deposit from a pseudonymous lender account, routed so the public chain cannot link the lender's source wallet to their pool shares. Amounts stay public.
 _Avoid_: anonymous deposit (Homeroll still knows the lender off-chain)
 
+### Paying out
+
+**Payout intent**:
+The owner's signed approval of a payroll run's payout: one transfer per reserved pay line, signed with NEP-413, checked by the payout rail before any line is paid.
+_Avoid_: payment order, batch
+
+**Payout rail**:
+The code path a payout intent takes from approval to payment. In this build a mock shaped like the 1Click API in confidential mode; the payroll contract still pays.
+_Avoid_: vault (Homeroll keeps no pooled funds outside the payroll contract)
+
 ### Sending money home
 
 **All-in cost**:

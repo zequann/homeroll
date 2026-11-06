@@ -7,7 +7,9 @@ import {
   homerollAccounts,
 } from "@homeroll/shared";
 import { type ActivityLog, getActivityLog } from "@/lib/activity";
+import { FAKE_CHAIN_SEED } from "@/lib/demo-keys";
 import { sen, senToUnits, type Units, units } from "@/lib/fx";
+import { deriveKey } from "@/lib/keys";
 import { GRADE_TABLE, maxAdvanceBps } from "@/lib/pool-grades";
 import type {
   AccessKeyView,
@@ -159,12 +161,15 @@ export class FakeChainClient implements ChainClient {
 
   async getAccessKeys(accountId: AccountId): Promise<AccessKeyView[]> {
     const allowance = YOCTO_PER_NEAR;
+    // The public halves of the fake chain's demo keys, so NEP-413 checks run as on testnet (SPEC §8.11)
+    const publicKey = (role: "owner" | "payrollAgent") =>
+      deriveKey(FAKE_CHAIN_SEED, accountId, role).publicKey;
     if (accountId === this.state.employer) {
       return [
-        { accountId, publicKey: "ed25519:fake-owner-key", permission: { kind: "FullAccess" } },
+        { accountId, publicKey: publicKey("owner"), permission: { kind: "FullAccess" } },
         {
           accountId,
-          publicKey: "ed25519:fake-payroll-agent-key",
+          publicKey: publicKey("payrollAgent"),
           permission: {
             kind: "FunctionCall",
             receiverId: this.accounts.payroll,

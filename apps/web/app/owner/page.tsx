@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { Segmented } from "@/components/Segmented";
+import { getFixtures } from "@/lib/near";
+import { loadPayoutPanel } from "@/lib/payout/server";
 import { readSession } from "@/lib/session";
 import { loadOwnerView } from "@/lib/views/owner";
 import { loadRahimView } from "@/lib/views/rahim";
 import { Activity } from "./_components/Activity";
 import { AgentKeys } from "./_components/AgentKeys";
+import { ConfidentialPayout } from "./_components/ConfidentialPayout";
 import { Invoices } from "./_components/Invoices";
 import styles from "./_components/owner.module.css";
 import { PayLines } from "./_components/PayLines";
@@ -31,11 +34,12 @@ export default async function OwnerPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const [{ tab: rawTab }, view, rahim, session] = await Promise.all([
+  const [{ tab: rawTab }, view, rahim, session, payout] = await Promise.all([
     searchParams,
     loadOwnerView(),
     loadRahimView(),
     readSession(),
+    loadPayoutPanel(getFixtures().company.accountId),
   ]);
   const tab = tabSchema.parse(rawTab);
   const connected = session?.role === "Owner";
@@ -66,6 +70,8 @@ export default async function OwnerPage({
             connected={connected}
             canFund={view.mode === "testnet"}
           />
+
+          <ConfidentialPayout payout={payout} network={view.mode} />
 
           <div className={styles.tabs}>
             <Segmented

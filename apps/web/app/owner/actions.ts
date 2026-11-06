@@ -21,6 +21,9 @@ import { settleWithMockBank } from "@/lib/mock/bank";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { period } from "@/lib/near/client";
 import { configureRpc } from "@/lib/near/rpc";
+import { approvePayout as approveWithRail, openApproval, sealApproval } from "@/lib/payout";
+import { railFailure } from "@/lib/payout/explain";
+import { approvalSecret, ownerSigns, payoutRail } from "@/lib/payout/server";
 import { toPayLines } from "@/lib/payroll";
 import { requireSigner } from "@/lib/session";
 
@@ -31,7 +34,7 @@ export type SubmitResult =
   | { ok: false; reason: "rejected"; failure: FailureView };
 
 export type PayResult =
-  | { ok: true; paid: number; total: number; done: boolean }
+  | { ok: true; paid: number; total: number; done: boolean; txHash: string }
   | { ok: false; reason: "not-connected" }
   | { ok: false; reason: "rejected"; failure: FailureView };
 
@@ -69,15 +72,54 @@ export async function submitPayroll(): Promise<SubmitResult> {
   return { ok: true, runId: result.value.runId, lineCount: lines.length };
 }
 
-/** One pay_run call. The browser calls it until `done`. */
-export async function payNextBatch(runId: unknown): Promise<PayResult> {
+export type ApproveResult =
+  /** `approval` is a sealed token the browser hands to each `payNextBatch` (SPEC §8.11). */
+  | { ok: true; intentHash: string; approval: string }
+  | { ok: false; reason: "not-connected" }
+  | { ok: false; reason: "rejected"; failure: FailureView };
+
+/**
+ * The owner approves a reserved run's payout (SPEC §8.11): the payout rail quotes the contract's
+ * reserved lines, the owner signs the NEP-413 payout intent, and the rail checks it (R17).
+ */
+export async function approvePayout(runId: unknown): Promise<ApproveResult> {
+  const id = z.number().int().nonnegative().parse(runId);
+  const session = await requireSigner("owner");
+  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const employer = session.signer.accountId;
+  const result = await approveWithRail(
+    payoutRail(),
+    { employer, period: period(getFixtures().company.period), runId: id },
+    ownerSigns(employer),
+  );
+  refresh();
+  if (!result.ok) return { ok: false, reason: "rejected", failure: railFailure(result.refusal) };
+  return {
+    ok: true,
+    intentHash: result.value.approval.intentHash,
+    approval: sealApproval(result.value.approval, approvalSecret()),
+  };
+}
+
+/**
+ * One pay_run batch, only with a sealed approval of this run's payout intent (R17). The browser
+ * calls it until `done`. The token, not this server's memory, carries the approval.
+ */
+export async function payNextBatch(runId: unknown, approvalToken: unknown): Promise<PayResult> {
   const id = z.number().int().nonnegative().parse(runId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
 
   const chain = getChainClient();
   const fixtures = getFixtures();
-  const result = await chain.payRun(session.signer, id);
+  const approval = openApproval(approvalToken, approvalSecret(), Date.now());
+  if (approval?.runId !== id || approval.employer !== session.signer.accountId) {
+    return { ok: false, reason: "rejected", failure: railFailure("not-approved") };
+  }
+  const executed = await payoutRail().execute(approval, session.signer);
+  if (!executed.ok)
+    return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
+  const result = executed.value;
   refresh();
   if (!result.ok) {
     const failure = await describeFailure(chain, fixtures.company.accountId, result.failure);
@@ -89,6 +131,7 @@ export async function payNextBatch(runId: unknown): Promise<PayResult> {
     paid: lines.filter((l) => l.status === "Paid").length,
     total: lines.length,
     done: status !== "Pending",
+    txHash: result.txHash,
   };
 }
 
@@ -122,12 +165,28 @@ export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
   const fixtures = getFixtures();
   const lines = toPayLines(fixtures.timesheet.filter((l) => l.accountId === account));
   if (lines.length !== 1) throw new Error("That account has no line on this timesheet");
-  const submitted = await chain.submitRun(session.signer, period(fixtures.company.period), lines);
+  const payrollPeriod = period(fixtures.company.period);
+  const submitted = await chain.submitRun(session.signer, payrollPeriod, lines);
   if (submitted.ok) {
-    const paid = await chain.payRun(session.signer, submitted.value.runId);
+    // The one-line run is paid like any other: the owner's payout intent first (R17)
+    const employer = session.signer.accountId;
+    const rail = payoutRail();
+    const run = { employer, period: payrollPeriod, runId: submitted.value.runId };
+    const approved = await approveWithRail(rail, run, ownerSigns(employer));
+    if (!approved.ok) {
+      refresh();
+      return { ok: false, reason: "rejected", failure: railFailure(approved.refusal) };
+    }
+    const executed = await rail.execute(approved.value.approval, session.signer);
     refresh();
-    if (paid.ok) return { ok: true };
-    const failure = await describeFailure(chain, fixtures.company.accountId, paid.failure);
+    if (!executed.ok)
+      return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
+    if (executed.value.ok) return { ok: true };
+    const failure = await describeFailure(
+      chain,
+      fixtures.company.accountId,
+      executed.value.failure,
+    );
     return { ok: false, reason: "rejected", failure };
   }
   refresh();

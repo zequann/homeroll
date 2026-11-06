@@ -539,6 +539,60 @@ interface DepositRoute {
 - The rate is real, so there is no "Mock" badge. The card is labelled **"Live · Rhea Lend, mainnet, read-only"** and says "Homeroll does not deposit into Rhea in this build."
 - Display only: the rate never feeds into pool NAV, fees, grades or any amount (hard rule: deterministic code decides money).
 
+### 8.11 Confidential payout (P1, mocked) — `lib/payout`
+
+Payday goes through a payout rail shaped like the 1Click API in confidential mode. The payroll contract stays the guard (D20). Confidential Intents runs on mainnet only, and its 1Click confidential mode needs partner access, so the rail is a mock.
+
+**Real on testnet:** the run check (`submit_run`), the owner's NEP-413 signature, the check of that signature against the owner's full-access key on-chain, and every payout transfer (`pay_run`). **Mocked:** the 1Click endpoints, confidential balances, the private shard, and the privacy itself. The payouts in this build are public testnet transfers. The UI never claims privacy.
+
+```ts
+interface PayoutRail {
+  quote(run: { employer: AccountId; period: Period; runId: number }): Promise<QuoteResponse>
+  generateIntent(req: { type: "swap_transfer"; standard: "nep413"; signerId: AccountId; depositAddress: string }): Promise<GenerateIntentResponse>
+  submitIntent(req: { type: "swap_transfer"; signedData: SignedData }): Promise<{ intentHash: string; correlationId: string }>
+  status(depositAddress: string): Promise<StatusResponse>
+}
+```
+
+`MockConfidentialRail` (now) implements it in-process. `OneClickConfidentialRail` (later) would call the real 1Click API with a partner key. Request and response field names follow the 1Click docs (`depositAddress`, `correlationId`, `intent.payload`, `signedData`, `intentHash`, `swapDetails.nearTxHashes`). Every response carries `"mock": true`. The same rail is served over HTTP at `/api/mock/1click/v0/{quote,generate-intent,submit-intent,status}` so the shapes can be inspected. Whether a run is one quote or one quote per worker stays inside the rail: the mock uses one per run.
+
+**Flow:**
+
+1. **Run payroll** is unchanged: the payroll agent proposes, `submit_run` checks the whole run and reserves its total (R3–R6).
+2. **Quote:** the rail reads the run from the contract and quotes its `Reserved` lines. It never takes lines from the agent or the browser. `depositAddress` is a mock id (`mock:<hex>`), not an account, so nobody can send funds to it.
+3. **Generate intent:** a NEP-413 payload. `recipient` is `homeroll-mock-intents` (production: `intents.near`), `nonce` is 32 random bytes in base64 (production: a versioned nonce), and `message` is this JSON string:
+
+   ```json
+   {"signer_id":"<employer>","deadline":"<ISO, 10 min>","intents":[{"intent":"transfer","receiver_id":"w-7k2q9x.<root>","tokens":{"nep141:tusdc.<root>":"464285714"},"memo":"payroll 2026-10"}]}
+   ```
+
+   There is one transfer intent per reserved line, in run order.
+4. **The owner signs** the payload with NEP-413 (sha256 of the u32 prefix 2³¹+413 and the borsh payload, ed25519). In P1 the server signs with the owner's demo key, behind the "Demo mode" banner. Later a wallet's `signMessage` does it.
+5. **Submit intent:** the R17 checks below. On success the rail returns `intentHash` (base58 of the NEP-413 hash) and the status becomes `PROCESSING`.
+6. **Execute:** `pay_run` until the run is `Done`, signed as the employer. `pay_run` takes only a run id, so the executor can pay only what the contract approved. Without an accepted intent for the run, the app does not call `pay_run`. That covers Run payroll, Finish paying and Pay missed worker. After submit-intent accepts, the server seals the approval (`{employer, period, runId, depositAddress, intentHash, expiresAt}`, HMAC-SHA256 with a key derived from `SERVER_KEY_SEED`) and the browser hands that token to each `pay_run` batch. So the approval survives the next request reaching a different server instance. The token expires with the intent's 10-minute deadline, and only opens for the employer and run it names.
+7. **Status:** `PENDING_DEPOSIT` (quoted, not signed), `PROCESSING` (accepted, paying), `SUCCESS` (run done), `REFUNDED` (run cancelled), `FAILED` (a line failed). `swapDetails.nearTxHashes` lists the `pay_run` hashes, with `testnetOnly: true`. Real 1Click returns only shield and unshield hashes.
+
+**R17 checks at submit, in order. The first failure refuses the intent, and nothing is paid:**
+
+1. The nonce is one this rail issued → else `unknown-intent`.
+2. The nonce is unused → else `nonce-used` (replay).
+3. The deadline has not passed → else `deadline-passed`.
+4. The signature is valid for `public_key` over the NEP-413 hash → else `bad-signature`.
+5. `public_key` is a **full-access** key of the employer, read from chain (`view_access_key_list`) → else `not-owner-key`. The payroll agent's function-call key can sign, but it cannot approve a payout.
+6. The payload is exactly what generate-intent returned → else `payload-changed`.
+7. The run's `Reserved` lines on chain still equal the intents → else `run-changed`.
+
+R17 is checked by the rail, not by the contract. In this build `pay_run` still moves the money, so the contract's run is the backstop: an approved intent can only release lines the contract already reserved, and a paid run cannot be paid again (`ERR_RUN_COMPLETE`). In production the signed intent is what moves the confidential balances, so these checks are the guard. Used nonces and quotes live in memory per server instance; the sealed approval does not (§18).
+
+**What an outsider sees** (the "This demo vs Production" toggle, §9.1):
+
+| Step | This demo (testnet) | Production (Confidential Intents) |
+|---|---|---|
+| Run check | `submit_run` with every pay line and amount | The same, as long as the payroll contract runs on the public chain (Q10) |
+| Funding | Owner → payroll treasury, with the amount | Owner → its confidential balance, with the amount |
+| Payday | `pay_run`: payroll → each worker, with amounts, on NearBlocks | Nothing |
+| Send home / Cash out | Worker → payout partner, with the amount | An amount leaving the Confidential Intents treasury, not linkable to the worker |
+
 ---
 
 ## 9. App
@@ -549,8 +603,9 @@ Labelled "Owner / HR": in P0 the owner also does HR (D13).
 
 - **Dashboard:** treasury (RM), advanced against invoices, payroll due, lender pool status.
 - **Invoices:** upload → live check list (4 checks) → grade card → advance offer (amount, fee, what pool gets back, what owner gets) → accept (signed by owner). The current demo company's invoices are offered as downloads.
-- **Payroll:** timesheet preview (40 lines with names, wage cap column) → "Run payroll" → per-line status → result. "Pay missed worker" submits a one-line run for the same period. "Cancel run" while lines are still unsent. Errors from the contract shown with a plain-English explanation.
+- **Payroll:** timesheet preview (40 lines with names, wage cap column) → "Run payroll" → the contract checks the run → the owner approves the payout intent (NEP-413, §8.11) → per-line status → result. "Pay missed worker" submits a one-line run for the same period. "Cancel run" while lines are still unsent. Errors from the contract shown with a plain-English explanation.
 - **Workers:** payee list (name + pseudonymous account); "Add payee" shows the 48-hour hold countdown.
+- **Confidential payout panel** (under the treasury, §8.11): badge **"Confidential layer: simulated"**. It shows the payout status, the intent hash and each `pay_run` hash with a NearBlocks link. Each payout hash is captioned "Simulated. In production this settles on NEAR's private shard.", and each link "Testnet transaction, publicly visible." A **"This demo vs Production"** toggle shows what an outsider sees in each case (§8.11 table).
 - **Agent keys:** shows each function-call key's receiver, methods and allowance, read from chain (`view_access_key_list`). This screen *is* the "why NEAR" slide.
 - **Activity:** every tx with actor, method, result, link to the testnet explorer.
 - **Demo mode banner:** the owner's key is held by the server (D7).
@@ -625,6 +680,7 @@ Every rule has at least one passing test, one failing test, and (where marked) a
 | R14 | Runs only for an open period (current or previous month, UTC) | payroll | `ERR_PERIOD_NOT_OPEN` | — |
 | R15 | Only the admin onboards employers; payee limit; minimum first lender deposit | payroll, pool | `ERR_NOT_ADMIN`, `ERR_TOO_MANY_PAYEES`, `ERR_DEPOSIT_TOO_SMALL` | — |
 | R16 | The mock solver delivers only the server's own quote: ≤ 50,000 USDC per deposit, ≤ 3 deposits per lender per hour, never below a new lender's minimum first deposit (§8.9) | `lib/deposit` (server policy) | refusal reason | unit test per rule |
+| R17 | A payout runs only after the employer's full-access key signs a payout intent equal to the contract's reserved lines, once, before its deadline (§8.11) | payout rail (mock), with the payroll contract as backstop | `unknown-intent`, `nonce-used`, `deadline-passed`, `bad-signature`, `not-owner-key`, `payload-changed`, `run-changed` | `06-tampered-payout-intent.ts` |
 
 **Attack scripts** (`scripts/attacks/0N-*.ts`) each: set up the scenario, make the agent do the wrong thing, print the agent's proposal, the rejection, the error, and the explorer link (or RPC error where the protocol rejects before inclusion). Exit code 0 when the attack **fails as expected**. `pnpm attacks` runs all five.
 
@@ -718,6 +774,7 @@ homeroll/
 | D16 | **The relayer pays for one kind of transaction only** (§8.3). |
 | D17 | **Lenders can deposit from any chain** NEAR Intents supports (P1, §8.9): live quote, mock delivery to the lender's own account, pool contract unchanged. |
 | D19 | **Lender deposits are private, half real and half mocked** (P1, §8.9). Real: pseudonymous `l-xxxxxx` lender accounts and the testnet pool deposit. Mocked: Confidential Intents routing, because Confidential Intents runs on mainnet only, and confidential 1Click quotes are refused without user authentication. The demo says production would use it, and claims only what it hides: the link between the source wallet and the pool account, not amounts. |
+| D20 | **Payday goes through a mocked Confidential Intents payout rail, and the payroll contract stays the guard** (§8.11). It does not use a custodial vault: the contract's checks (R3–R6), the agent's function-call key and the reserved run stay. The owner signs a NEP-413 payout intent built from the contract's reserved lines, and the rail checks it (R17) before `pay_run`. The UI labels the confidential layer as simulated and never claims privacy. |
 | D18 | **Rhea Lend: live rate shown, no money moved.** P1: `/lender` shows Rhea Lend's live USDC supply rate from a read-only mainnet view call (§8.10). Moving idle pool cash into Rhea is future roadmap only (§18). |
 
 ### Open questions
@@ -729,6 +786,7 @@ homeroll/
 | Q7 | How much of the agent key's 1 NEAR allowance one run uses, and whether gas refunds go back to it | On-chain dev | Reset demo adds a fresh key |
 | Q8 | Gas `ft_transfer` needs, to set the relayer's gas cap | On-chain dev | Keep 30 Tgas |
 | Q9 | Does a 1Click partner key (`ONECLICK_API_KEY`) unlock confidential dry-run quotes, or do they also need a user-session token (a mainnet wallet signing in at `/v0/auth/authenticate`)? | On-chain dev | Public quote; the routing step stays "Mock routing" (§8.9) |
+| Q10 | Can a third-party contract (the payroll contract) run on the Confidential Intents private shard? If so, `submit_run`, wage caps and runs would be private too. If not, wages stay visible in the run check even in production | On-chain dev | Production hides payday and what workers do afterwards, not wages (§8.11 table) |
 
 **How we answer them: on testnet, as real as possible, no real money.** Testnet runs the same protocol and fee rules as mainnet, and its NEAR is free from the faucet. Each measurement is a script in `scripts/measure/` that prints JSON (tx hashes, balances, gas) and is re-run after every contract change. Results go into this table with the tx hashes, so judges can check them in the explorer. The sandbox integration tests repeat the same checks in CI, but testnet numbers are the ones we quote.
 
@@ -806,6 +864,7 @@ Follow `HACKATHON.md` for the exact field rules.
 10. The contract checks limits, not correctness: an agent can still propose a wrong amount below the wage cap, so the owner reviews the preview before running payroll.
 11. The payout partner's 1.0% all-in fee (including FX margin) is an assumption, not a quote.
 12. Lender privacy hides who a lender is, not how much they lend. Pool deposits and share balances are public, and a deposit can be matched by amount and time to the swap that funded it. The mock solver's limits (§8.9, R16) are server policy, kept in memory per server instance.
+13. Confidential Intents isn't available on testnet, so Homeroll simulates that layer. The payouts you see are real testnet transfers and are publicly visible. In production they settle on NEAR's private shard. Even then, while the payroll contract runs on the public chain, `submit_run` shows every wage (Q10). The payout rail's used nonces and quotes live in memory per server instance. The approval that lets `pay_run` batches go ahead is a sealed token, so it works across instances.
 15. `update_cap` and `withdraw` (§7.3) are not in the payroll contract yet. The app does not call them.
 
 ### Future roadmap

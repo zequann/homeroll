@@ -33,6 +33,13 @@ describe("deriveRunState", () => {
     });
   });
 
+  it("shows the owner's payout approval between the check and the payments (SPEC §8.11)", () => {
+    const state = deriveRunState(facts(), { ...IDLE, approving: true });
+    expect(state.kind).toBe("approving");
+    expect(buttonLabel(state)).toBe("Approving payout…");
+    expect(buttonEnabled(state, false)).toBe(false);
+  });
+
   it("answers on the same frame while checking", () => {
     const state = deriveRunState(facts(), { ...IDLE, checking: true });
     expect(state.kind).toBe("checking");

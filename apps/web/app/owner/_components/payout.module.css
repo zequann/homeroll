@@ -1,0 +1,74 @@
+/* Confidential payout panel (SPEC §8.11, §9.1) */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+  padding: var(--s-4);
+  border-radius: var(--r-card);
+  box-shadow: inset 0 0 0 0.5px var(--ink-4);
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.hashes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hashes li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.hashes a {
+  color: var(--accent);
+}
+.toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  margin: 0;
+  border: 0;
+  padding: 2px;
+  border-radius: var(--r-card);
+  background: var(--ground);
+}
+.toggle button {
+  padding: var(--s-1) var(--s-3);
+  border: 0;
+  border-radius: var(--r-card);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.toggle button[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+  font-weight: 600;
+}
+.views {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+  margin: 0;
+}
+.views dd {
+  margin: 2px 0 0;
+}
+@media (max-width: 559px) {
+  .views {
+    grid-template-columns: 1fr;
+  }
+}

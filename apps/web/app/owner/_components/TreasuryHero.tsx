@@ -9,7 +9,13 @@ import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
 import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, type Sen } from "@/lib/fx";
-import { cancelPayroll, fundTreasury, payNextBatch, submitPayroll } from "../actions";
+import {
+  approvePayout,
+  cancelPayroll,
+  fundTreasury,
+  payNextBatch,
+  submitPayroll,
+} from "../actions";
 import styles from "./owner.module.css";
 import {
   buttonEnabled,
@@ -51,10 +57,29 @@ export function TreasuryHero(props: TreasuryHeroProps) {
   const [pending, start] = useTransition();
   const state = deriveRunState(facts, local);
 
+  /** The owner's payout intent first (SPEC §8.11). The sealed approval, or null when refused. */
+  async function approve(runId: number): Promise<string | null> {
+    setLocal({ checking: false, approving: true, rejection: null, paying: null });
+    const approved = await approvePayout(runId);
+    if (approved.ok) return approved.approval;
+    const failure =
+      approved.reason === "rejected"
+        ? approved.failure
+        : {
+            sentence: "Connect the owner wallet to pay.",
+            code: "NOT_CONNECTED",
+            ruleCaption: null,
+          };
+    setLocal({ ...IDLE, rejection: { failure, atTreasury: treasurySen } });
+    return null;
+  }
+
   async function payAll(runId: number, total: number, from: number) {
+    const approval = await approve(runId);
+    if (!approval) return;
     setLocal({ checking: false, rejection: null, paying: { paid: from, total, runId } });
     for (;;) {
-      const batch = await payNextBatch(runId);
+      const batch = await payNextBatch(runId, approval);
       if (!batch.ok) {
         const failure =
           batch.reason === "rejected"
@@ -236,6 +261,11 @@ function StatusLine({
       break;
     case "checking":
       body = <p>The payroll contract is checking all {facts.lineCount} pay lines.</p>;
+      break;
+    case "approving":
+      body = (
+        <p>The owner signs the payout intent. The payout rail checks it before anything is paid.</p>
+      );
       break;
     case "paying":
       body = (

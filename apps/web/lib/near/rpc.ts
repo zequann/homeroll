@@ -4,6 +4,7 @@ import {
   Account,
   actions,
   baseDecode,
+  baseEncode,
   buildDelegateAction,
   type DelegateAction,
   encodeDelegateAction,
@@ -586,4 +587,39 @@ export async function accessKeyList(accountId: string): Promise<unknown> {
 
 export function wasmCodeHash(wasm: Uint8Array): CodeHash {
   return createHash("sha256").update(wasm).digest("hex") as CodeHash;
+}
+
+/**
+ * NEP-413: signs a message the way a wallet's signMessage does (SPEC §8.11). near-api-js does the
+ * hashing here; lib/payout checks the result with its own hash, so the two must agree.
+ */
+export async function signNep413Message(
+  accountId: string,
+  secretKey: string,
+  payload: { message: string; recipient: string; nonce: Uint8Array; callbackUrl?: string },
+): Promise<{ publicKey: string; signature: string }> {
+  const signed = await KeyPairSigner.fromSecretKey(secretKey as KeyPairString).signNep413Message(
+    accountId,
+    payload,
+  );
+  return {
+    publicKey: signed.publicKey.toString(),
+    signature: `ed25519:${baseEncode(signed.signature)}`,
+  };
+}
+
+/** True when `signature` (`ed25519:<base58>`) is `publicKey`'s signature over `message`. */
+export function verifyEd25519(publicKey: string, message: Uint8Array, signature: string): boolean {
+  try {
+    if (!publicKey.startsWith("ed25519:") || !signature.startsWith("ed25519:")) return false;
+    const bytes = baseDecode(signature.slice("ed25519:".length));
+    if (bytes.length !== 64) return false;
+    return PublicKey.fromString(publicKey).verify(message, bytes);
+  } catch {
+    return false;
+  }
+}
+
+export function base58(bytes: Uint8Array): string {
+  return baseEncode(bytes);
 }
