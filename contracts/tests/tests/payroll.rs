@@ -1,8 +1,8 @@
 //! Payroll on a sandbox node (SPEC §7.3): admin onboarding (R15) and the wage cap (R4).
 
 use homeroll_common::errors::{
-    ERR_ABOVE_WAGE_CAP, ERR_BELOW_BUFFER, ERR_EMPLOYER_EXISTS, ERR_NOT_ADMIN, ERR_RUN_COMPLETE,
-    ERR_TOO_MANY_PAYEES, line_error,
+    ERR_ABOVE_WAGE_CAP, ERR_BELOW_BUFFER, ERR_EMPLOYER_EXISTS, ERR_NOT_ADMIN, ERR_NOT_EMPLOYER,
+    ERR_RUN_COMPLETE, ERR_RUN_NOT_FOUND, ERR_TOO_MANY_PAYEES, ERR_UNKNOWN_PAYEE, line_error,
 };
 use homeroll_contract_tests::{Contract, Env, assert_fails_with};
 use near_api::types::transaction::result::TransactionResult;
@@ -747,5 +747,197 @@ async fn a_forty_line_run_pays_in_two_calls_under_the_gas_ceiling() -> TestResul
         )
         .await?;
     assert_eq!(status_counts(&runs), (line_count, 0));
+    Ok(())
+}
+
+/// SPEC §7.3 `cancel_run`: reserved money goes back, the period is free again, nothing is paid.
+#[tokio::test]
+async fn cancel_run_returns_the_reserved_total_and_frees_the_period() -> TestResult {
+    let (env, tusdc, payroll, employer, worker) = payroll_payout_fixture().await?;
+    register_tusdc_storage(&env, &tusdc, &worker).await?;
+    fund_treasury_via_transfer_call(&env, &tusdc, &payroll, &employer, PAY_AMOUNT).await?;
+    let (period, outcome) = submit_one_line(&env, &payroll, &employer, &worker, PAY_AMOUNT).await?;
+    outcome.assert_success();
+
+    env.call(
+        &employer,
+        &payroll,
+        "cancel_run",
+        json!({ "run_id": 0 }),
+        NO_DEPOSIT,
+    )
+    .await?
+    .assert_success();
+
+    let run = env
+        .view(
+            &payroll,
+            "get_run",
+            json!({ "employer": employer, "run_id": 0 }),
+        )
+        .await?;
+    assert_eq!(run["status"], json!("Cancelled"));
+    assert_eq!(run["lines"][0]["status"], json!("Cancelled"));
+    let view = env
+        .view(&payroll, "get_employer", json!({ "employer": employer }))
+        .await?;
+    assert_eq!(view["treasury"], json!(PAY_AMOUNT.to_string()));
+    // Nothing reached the worker, and the cancelled line does not hold the period
+    assert_eq!(
+        env.view(&tusdc, "ft_balance_of", json!({ "account_id": worker }))
+            .await?,
+        json!("0")
+    );
+    let again = env
+        .call(
+            &employer,
+            &payroll,
+            "submit_run",
+            json!({ "period": period, "lines": [{ "account_id": worker, "amount": PAY_AMOUNT.to_string() }] }),
+            NO_DEPOSIT,
+        )
+        .await?;
+    again.assert_success();
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancel_run_refuses_other_callers_unknown_runs_and_finished_runs() -> TestResult {
+    let (env, tusdc, payroll, employer, worker) = payroll_payout_fixture().await?;
+    fund_treasury_via_transfer_call(&env, &tusdc, &payroll, &employer, PAY_AMOUNT).await?;
+    let (_, outcome) = submit_one_line(&env, &payroll, &employer, &worker, PAY_AMOUNT).await?;
+    outcome.assert_success();
+
+    // The worker is not an employer, so it cannot cancel the employer's run
+    let stranger = env
+        .call(
+            &worker,
+            &payroll,
+            "cancel_run",
+            json!({ "run_id": 0 }),
+            NO_DEPOSIT,
+        )
+        .await?;
+    assert_fails_with(stranger, ERR_NOT_EMPLOYER);
+    let unknown = env
+        .call(
+            &employer,
+            &payroll,
+            "cancel_run",
+            json!({ "run_id": 7 }),
+            NO_DEPOSIT,
+        )
+        .await?;
+    assert_fails_with(unknown, ERR_RUN_NOT_FOUND);
+    env.call(
+        &employer,
+        &payroll,
+        "cancel_run",
+        json!({ "run_id": 0 }),
+        NO_DEPOSIT,
+    )
+    .await?
+    .assert_success();
+    let twice = env
+        .call(
+            &employer,
+            &payroll,
+            "cancel_run",
+            json!({ "run_id": 0 }),
+            NO_DEPOSIT,
+        )
+        .await?;
+    assert_fails_with(twice, ERR_RUN_COMPLETE);
+    let view = env
+        .view(&payroll, "get_employer", json!({ "employer": employer }))
+        .await?;
+    assert_eq!(view["treasury"], json!(PAY_AMOUNT.to_string()));
+    Ok(())
+}
+
+/// R3: a payee removed after the run was reserved is skipped, and the money returns.
+#[tokio::test]
+async fn a_payee_removed_before_payment_is_skipped_and_the_money_returns() -> TestResult {
+    let (env, tusdc, payroll, employer, worker) = payroll_payout_fixture().await?;
+    register_tusdc_storage(&env, &tusdc, &worker).await?;
+    fund_treasury_via_transfer_call(&env, &tusdc, &payroll, &employer, PAY_AMOUNT).await?;
+    let (_, outcome) = submit_one_line(&env, &payroll, &employer, &worker, PAY_AMOUNT).await?;
+    outcome.assert_success();
+
+    env.call(
+        &employer,
+        &payroll,
+        "remove_payee",
+        json!({ "account_id": worker }),
+        NO_DEPOSIT,
+    )
+    .await?
+    .assert_success();
+    let payees = env
+        .view(&payroll, "get_payees", json!({ "employer": employer }))
+        .await?;
+    assert_eq!(payees, json!([]));
+
+    env.call(
+        &employer,
+        &payroll,
+        "pay_run",
+        json!({ "run_id": 0 }),
+        NO_DEPOSIT,
+    )
+    .await?
+    .assert_success();
+    let run = env
+        .view(
+            &payroll,
+            "get_run",
+            json!({ "employer": employer, "run_id": 0 }),
+        )
+        .await?;
+    assert_eq!(run["lines"][0]["status"], json!("Skipped"));
+    assert_eq!(
+        env.view(&tusdc, "ft_balance_of", json!({ "account_id": worker }))
+            .await?,
+        json!("0")
+    );
+    let view = env
+        .view(&payroll, "get_employer", json!({ "employer": employer }))
+        .await?;
+    assert_eq!(view["treasury"], json!(PAY_AMOUNT.to_string()));
+
+    let unknown = env
+        .call(
+            &employer,
+            &payroll,
+            "remove_payee",
+            json!({ "account_id": worker }),
+            NO_DEPOSIT,
+        )
+        .await?;
+    assert_fails_with(unknown, ERR_UNKNOWN_PAYEE);
+    Ok(())
+}
+
+#[tokio::test]
+async fn get_run_is_null_for_an_unknown_employer_or_run() -> TestResult {
+    let (env, payroll, employer, _) = employer_with_one_payee().await?;
+    assert_eq!(
+        env.view(
+            &payroll,
+            "get_run",
+            json!({ "employer": employer, "run_id": 0 }),
+        )
+        .await?,
+        Value::Null
+    );
+    assert_eq!(
+        env.view(
+            &payroll,
+            "get_run",
+            json!({ "employer": format!("nobody.{}", env.root), "run_id": 0 }),
+        )
+        .await?,
+        Value::Null
+    );
     Ok(())
 }

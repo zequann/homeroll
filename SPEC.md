@@ -273,12 +273,12 @@ Initial config is `max_lines_per_run = 40`, `max_lines_per_call = 20`, `max_paye
 | `register_employer(employer: AccountId, buffer: U128)` | admin | Onboards an employer with `onboarding = true`. Already registered → `ERR_EMPLOYER_EXISTS` |
 | `ft_on_transfer(sender_id, amount, msg)` | `tusdc` only | `msg = {"employer":"<id>"}` credits that employer's treasury when the predecessor is `token` and the employer is registered. Any other case returns the full amount and writes nothing |
 | `add_payee(account_id, cap: U128)` | employer | At most `max_payees_per_employer` → else `ERR_TOO_MANY_PAYEES`. During onboarding → active immediately. After onboarding → `active_from = now + hold_ns` (the 48-hour hold). Re-adding a payee replaces it (new cap and `active_from`) and it still counts as one payee |
-| `update_cap(account_id, cap: U128)` | employer | Decrease: immediate. Increase: after `hold_ns` |
+| `update_cap(account_id, cap: U128)` | employer | Decrease: immediate. Increase: after `hold_ns`. **Not in this build:** it needs `pending_cap` in state, so a state migration; the app does not call it |
 | `remove_payee(account_id)` | employer | Immediate. Their lines not yet sent are skipped by `pay_run` |
 | `submit_run(period: String, lines: Vec<PayLine>) -> u64` | employer | Checks the whole run and reserves its total; returns the run id. See rules below |
 | `pay_run(run_id: u64)` | employer | Pays the run's next `max_lines_per_call` lines. Call again until the run is `Done` |
 | `cancel_run(run_id: u64)` | employer (owner's key only: not on the agent key) | Cancels every line not yet sent and returns its money to the treasury |
-| `withdraw(amount: U128)` | employer | To the employer account only |
+| `withdraw(amount: U128)` | employer | To the employer account only. **Not in this build:** the app does not call it |
 | `get_employer(employer)`, `get_payees(employer)`, `get_run(employer, run_id)`, `get_runs(employer, period)` | anyone | Views |
 
 `PayLine { account_id: AccountId, amount: U128 }`. `period` format is exactly `YYYY-MM`.
@@ -297,6 +297,8 @@ Events for this behaviour, each with `data` as a one-element array. JSON timesta
 - `payroll_line_sent` with `{employer, run_id, line_index, account_id, amount}`
 - `payroll_line_skipped` with `{employer, run_id, line_index, account_id, amount}`
 - `payroll_line_failed` with `{employer, run_id, line_index, account_id, amount}`
+- `payee_removed` with `{employer, account_id}`
+- `run_cancelled` with `{employer, run_id, amount, line_count}`: `amount` is the total returned to the treasury
 
 Other payroll errors: `ERR_NOT_ADMIN` (caller is not the admin), `ERR_NOT_EMPLOYER` (caller is not a registered employer), `ERR_UNKNOWN_PAYEE` (update/remove of a payee that does not exist), `ERR_INSUFFICIENT_TREASURY` (withdraw above balance), `ERR_RUN_NOT_FOUND`, `ERR_RUN_COMPLETE` (`pay_run` or `cancel_run` on a run with no lines left to send).
 
@@ -778,6 +780,7 @@ Follow `HACKATHON.md` for the exact field rules.
 9. A payee is paid at most once per period through payroll, so a top-up for a worker already paid (for example forgotten overtime) is paid by the owner by hand.
 10. The contract checks limits, not correctness: an agent can still propose a wrong amount below the wage cap, so the owner reviews the preview before running payroll.
 11. The payout partner's 1.0% all-in fee (including FX margin) is an assumption, not a quote.
+15. `update_cap` and `withdraw` (§7.3) are not in the payroll contract yet. The app does not call them.
 
 ### Future roadmap
 

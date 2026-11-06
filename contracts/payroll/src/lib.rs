@@ -16,7 +16,10 @@ use near_sdk::{
 
 use config::Config;
 use employer::{Employer, EmployerView, PayAction, PayeeView, Settlement};
-use events::{EmployerRegistered, PayeeAdded, PayrollEvent, PayrollLineEvent, RunSubmitted};
+use events::{
+    EmployerRegistered, PayeeAdded, PayeeRemoved, PayrollEvent, PayrollLineEvent, RunCancelled,
+    RunSubmitted,
+};
 use run::{PayLine, RunView};
 
 /// One enum for every storage prefix, so two collections cannot share a key space.
@@ -127,6 +130,37 @@ impl Payroll {
             active_from: U64(added.active_from),
         }];
         PayrollEvent::PayeeAdded(&added_event).emit();
+    }
+
+    /// Employer removes a payee at once. Their lines not yet sent are skipped by `pay_run` (R3).
+    /// Not on the payroll agent's key, so only the owner's key reaches it (SPEC §6).
+    pub fn remove_payee(&mut self, account_id: AccountId) {
+        let caller = env::predecessor_account_id();
+        if let Err(rejection) = self.employer_mut(&caller).remove_payee(&account_id) {
+            rejection.panic();
+        }
+        let event = [PayeeRemoved {
+            employer: caller,
+            account_id,
+        }];
+        PayrollEvent::PayeeRemoved(&event).emit();
+    }
+
+    /// Cancels every line not yet sent and returns its money to the treasury (SPEC §7.3).
+    /// Not on the payroll agent's key, so only the owner's key reaches it (SPEC §6).
+    pub fn cancel_run(&mut self, run_id: u64) {
+        let caller = env::predecessor_account_id();
+        let cancelled = match self.employer_mut(&caller).cancel_run(run_id) {
+            Ok(cancelled) => cancelled,
+            Err(rejection) => rejection.panic(),
+        };
+        let event = [RunCancelled {
+            employer: caller,
+            run_id,
+            amount: U128(cancelled.returned),
+            line_count: cancelled.line_count,
+        }];
+        PayrollEvent::RunCancelled(&event).emit();
     }
 
     /// Checks the whole run and reserves its total. Returns the run id (SPEC §7.3, ADR-0001).
@@ -279,6 +313,13 @@ impl Payroll {
         self.employers
             .get(&employer)
             .map(|record| record.runs_in(&period))
+    }
+
+    /// One run by id. `null` for an unknown employer or run id.
+    pub fn get_run(&self, employer: AccountId, run_id: u64) -> Option<RunView> {
+        self.employers
+            .get(&employer)
+            .and_then(|record| record.run_view(run_id))
     }
 
     fn employer_mut(&mut self, account_id: &AccountId) -> &mut Employer {

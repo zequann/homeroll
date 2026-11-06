@@ -20,6 +20,10 @@ pub(crate) enum PayrollEvent<'a> {
     PayrollLineSkipped(&'a [PayrollLineEvent]),
     #[event_version("1.0.0")]
     PayrollLineFailed(&'a [PayrollLineEvent]),
+    #[event_version("1.0.0")]
+    PayeeRemoved(&'a [PayeeRemoved]),
+    #[event_version("1.0.0")]
+    RunCancelled(&'a [RunCancelled]),
 }
 
 #[near(serializers = [json])]
@@ -52,4 +56,19 @@ pub(crate) struct PayrollLineEvent {
     pub(crate) line_index: u32,
     pub(crate) account_id: AccountId,
     pub(crate) amount: U128,
+}
+
+#[near(serializers = [json])]
+pub(crate) struct PayeeRemoved {
+    pub(crate) employer: AccountId,
+    pub(crate) account_id: AccountId,
+}
+
+#[near(serializers = [json])]
+pub(crate) struct RunCancelled {
+    pub(crate) employer: AccountId,
+    pub(crate) run_id: u64,
+    /// Total returned to the treasury.
+    pub(crate) amount: U128,
+    pub(crate) line_count: u32,
 }
