@@ -1,10 +1,17 @@
 import { join } from "node:path";
-import { type AccountId, homerollAccounts, parseContractError } from "@homeroll/shared";
+import {
+  type AccountId,
+  homerollAccounts,
+  parseContractError,
+  WORKER_NAME_PATTERN,
+} from "@homeroll/shared";
 import { getEnv } from "@/lib/env";
 import type { Units } from "@/lib/fx";
-import { deriveKey } from "@/lib/keys";
+import { adminSigner, deriveKey } from "@/lib/keys";
+import { provisionDemoCompany } from "@/lib/near/demo-company";
 import { ExposureLog } from "@/lib/relay/exposure";
 import { relay } from "@/lib/relay/relay";
+import { readSeedEnv } from "@/lib/seed/shell";
 import type {
   AccessKeyView,
   Attestation,
@@ -41,10 +48,9 @@ import {
   ftBalanceOf as rpcFtBalance,
   signDelegate,
   submitDelegate,
+  viewAccount,
   viewFunction,
 } from "./rpc";
-
-const NOT_BUILT = "NearChainClient is not built yet (on-chain dev, SPEC §8.8)";
 
 // 20 lines attach 500 Tgas. The stored config from `new` was 36, so earlier calls scheduled
 // 36 lines and panicked (tx AJTGkAXsCWqAQ9PjjKUjoJkwnP8b5eJUJueSEbrn1Xfq). 970 fits twice
@@ -52,6 +58,9 @@ const NOT_BUILT = "NearChainClient is not built yet (on-chain dev, SPEC §8.8)";
 const GAS_PAY_RUN = 970n * 1_000_000_000_000n;
 const GAS_REQUEST_ADVANCE = 150n * 1_000_000_000_000n;
 const GAS_FT_TRANSFER = 15n * 1_000_000_000_000n;
+const GAS_OWNER_CALL = 30n * 1_000_000_000_000n;
+// Account create, the 0.05 NEAR transfer, and the token storage deposit.
+const GAS_CREATE_WORKER = 100n * 1_000_000_000_000n;
 // ft_on_transfer forwards the rest with 65 Tgas plus a 20 Tgas callback, and the token resolves after.
 const GAS_SETTLE = 200n * 1_000_000_000_000n;
 
@@ -114,6 +123,19 @@ function keyFor(signer: Signer) {
   }
 }
 
+function ownerDenied(signer: Signer): TxFailure | null {
+  if (signer.role === "payrollAgent") return { kind: "protocol", name: "MethodNameMismatch" };
+  if (signer.role !== "owner") return { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } };
+  return null;
+}
+
+function workerNameOf(accountId: AccountId, root: AccountId): string | null {
+  const suffix = `.${root}`;
+  if (!accountId.endsWith(suffix)) return null;
+  const name = accountId.slice(0, -suffix.length);
+  return WORKER_NAME_PATTERN.test(name) ? name : null;
+}
+
 function failed(error: unknown): { ok: false; txHash: null; failure: TxFailure } {
   const message = error instanceof Error ? error.message : String(error);
   return { ok: false, txHash: null, failure: txFailureFromMessage(message) };
@@ -174,7 +196,8 @@ export class NearChainClient implements ChainClient {
         failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } },
       };
     }
-    const key = payrollSigner(signer.accountId);
+    const key =
+      signer.role === "owner" ? ownerSigner(signer.accountId) : payrollSigner(signer.accountId);
     try {
       const { txHash } = await callMethods(key, this.accounts.payroll, [
         {
@@ -194,14 +217,59 @@ export class NearChainClient implements ChainClient {
       return { ok: false, txHash: null, failure: txFailureFromMessage(message) };
     }
   }
-  addPayee(): never {
-    throw new Error(NOT_BUILT);
+  async addPayee(signer: Signer, accountId: AccountId, cap: Units): Promise<Tx<PayeeView>> {
+    const denied = ownerDenied(signer);
+    if (denied) return { ok: false, txHash: null, failure: denied };
+    try {
+      const created = await this.ensureWorker(accountId);
+      if (created) return { ok: false, txHash: null, failure: created };
+      const { txHash } = await callMethod(ownerSigner(signer.accountId), this.accounts.payroll, {
+        method: "add_payee",
+        args: { account_id: accountId, cap: cap.toString() },
+        gas: GAS_OWNER_CALL,
+        depositYocto: 0n,
+      });
+      const view = (await this.getPayees(signer.accountId)).find((p) => p.accountId === accountId);
+      if (!view) throw new Error("add_payee succeeded but payee missing");
+      return { ok: true, txHash, value: view };
+    } catch (err) {
+      return failed(err);
+    }
   }
-  removePayee(): never {
-    throw new Error(NOT_BUILT);
+
+  async removePayee(signer: Signer, accountId: AccountId): Promise<Tx<null>> {
+    const denied = ownerDenied(signer);
+    if (denied) return { ok: false, txHash: null, failure: denied };
+    try {
+      const { txHash } = await callMethod(ownerSigner(signer.accountId), this.accounts.payroll, {
+        method: "remove_payee",
+        args: { account_id: accountId },
+        gas: GAS_OWNER_CALL,
+        depositYocto: 0n,
+      });
+      return { ok: true, txHash, value: null };
+    } catch (err) {
+      return failed(err);
+    }
   }
-  cancelRun(): never {
-    throw new Error(NOT_BUILT);
+
+  async cancelRun(signer: Signer, runId: number): Promise<Tx<RunView>> {
+    const denied = ownerDenied(signer);
+    if (denied) return { ok: false, txHash: null, failure: denied };
+    try {
+      const { txHash } = await callMethod(ownerSigner(signer.accountId), this.accounts.payroll, {
+        method: "cancel_run",
+        args: { run_id: runId },
+        gas: GAS_OWNER_CALL,
+        depositYocto: 0n,
+      });
+      const month = await this.findRunPeriod(signer.accountId, runId);
+      const view = (await this.getRuns(signer.accountId, month))?.find((r) => r.runId === runId);
+      if (!view) throw new Error("cancel_run succeeded but run missing");
+      return { ok: true, txHash, value: view };
+    } catch (err) {
+      return failed(err);
+    }
   }
   async attestInvoice(signer: Signer, a: Attestation): Promise<Tx<InvoiceView>> {
     const key = keyFor(signer);
@@ -278,7 +346,8 @@ export class NearChainClient implements ChainClient {
         failure: { kind: "contract", error: { code: "ERR_NOT_EMPLOYER" } },
       };
     }
-    const key = payrollSigner(signer.accountId);
+    const key =
+      signer.role === "owner" ? ownerSigner(signer.accountId) : payrollSigner(signer.accountId);
     try {
       const period = await this.findRunPeriod(signer.accountId, runId);
       const { txHash } = await callMethod(key, this.accounts.payroll, {
@@ -371,7 +440,40 @@ export class NearChainClient implements ChainClient {
   }
 
   async resetDemo(): Promise<{ employer: AccountId }> {
-    throw new Error("resetDemo is not implemented on NearChainClient");
+    const parsed = readSeedEnv(process.env);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return provisionDemoCompany(parsed.input);
+  }
+
+  private async ensureWorker(accountId: AccountId): Promise<TxFailure | null> {
+    const name = workerNameOf(accountId, this.accounts.root);
+    if (!name) return null;
+    if ((await viewAccount(accountId)).exists) return null;
+    const admin = adminSigner(
+      this.accounts.root,
+      process.env.HOMEROLL_ADMIN_PRIVATE_KEY?.trim() ?? null,
+    );
+    if (!admin) throw new Error("HOMEROLL_ADMIN_PRIVATE_KEY is not set");
+    const worker = deriveKey(requireSeed(), accountId, "worker");
+    try {
+      // A taken name panics in a callback. The outer transaction still succeeds.
+      const { receiptFailures } = await callMethodWithReceipts(admin, this.accounts.factory, {
+        method: "create_worker",
+        args: { name, public_key: worker.publicKey },
+        gas: GAS_CREATE_WORKER,
+        depositYocto: 0n,
+      });
+      for (const failure of receiptFailures) {
+        const error = parseContractError(failure);
+        if (error?.code === "ERR_ACCOUNT_EXISTS") return null;
+        if (error) return { kind: "contract", error };
+      }
+      return null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (parseContractError(message)?.code === "ERR_ACCOUNT_EXISTS") return null;
+      return txFailureFromMessage(message);
+    }
   }
 
   private async findRunPeriod(employer: AccountId, runId: number): Promise<Period> {

@@ -9,7 +9,7 @@ import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
 import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, type Sen } from "@/lib/fx";
-import { cancelPayroll, payNextBatch, submitPayroll } from "../actions";
+import { cancelPayroll, fundTreasury, payNextBatch, submitPayroll } from "../actions";
 import styles from "./owner.module.css";
 import {
   buttonEnabled,
@@ -30,11 +30,22 @@ export interface TreasuryHeroProps {
   facts: RunFacts;
   /** The owner demo account is connected, so the page can sign. */
   connected: boolean;
+  /** Testnet only. Mints tUSDC into this company's treasury. */
+  canFund: boolean;
 }
 
 export function TreasuryHero(props: TreasuryHeroProps) {
-  const { companyName, treasurySen, treasuryUsdc, bufferSen, periodLabel, facts, connected } =
-    props;
+  const {
+    companyName,
+    treasurySen,
+    treasuryUsdc,
+    bufferSen,
+    periodLabel,
+    facts,
+    connected,
+    canFund,
+  } = props;
+  const [fundNote, setFundNote] = useState<string | null>(null);
   const router = useRouter();
   const [local, setLocal] = useState<LocalPhase>(IDLE);
   const [pending, start] = useTransition();
@@ -168,6 +179,25 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               Take advance
             </Button>
           ) : null}
+          {canFund && connected ? (
+            <Button
+              variant="tinted"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  setFundNote(null);
+                  const result = await fundTreasury();
+                  if (result.ok) setFundNote("Added RM20,000 of testnet tUSDC.");
+                  else if (result.reason === "rejected") setFundNote(result.failure.sentence);
+                  else setFundNote("Connect the owner first.");
+                  router.refresh();
+                })
+              }
+            >
+              Add RM20,000
+            </Button>
+          ) : null}
+          {fundNote ? <span className="t-caption ink-3">{fundNote}</span> : null}
           <span className="t-caption ink-3">
             {periodLabel} · {facts.lineCount} workers ·{" "}
             <Money value={facts.periodTotalSen ?? facts.totalSen} />

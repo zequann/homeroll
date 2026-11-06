@@ -14,12 +14,15 @@ import { proposePayroll } from "@/lib/agents/payroll";
 import { resetDemoEverywhere } from "@/lib/demo-reset";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { getEnv } from "@/lib/env";
+import { addTreasury } from "@/lib/fund/plan";
 import { parseRm, sen, senToUnits } from "@/lib/fx";
+import { adminSigner } from "@/lib/keys";
 import { settleWithMockBank } from "@/lib/mock/bank";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { period } from "@/lib/near/client";
+import { configureRpc } from "@/lib/near/rpc";
 import { toPayLines } from "@/lib/payroll";
-import { payrollAgentSigner, requireSigner } from "@/lib/session";
+import { requireSigner } from "@/lib/session";
 
 /** Everything these actions return is plain data: strings and numbers, never bigint. */
 export type SubmitResult =
@@ -51,7 +54,7 @@ export async function submitPayroll(): Promise<SubmitResult> {
   const fixtures = getFixtures();
   const payrollPeriod = period(fixtures.company.period);
   const { lines } = await proposePayroll(chain, fixtures, payrollPeriod, Date.now());
-  const result = await chain.submitRun(payrollAgentSigner(), payrollPeriod, lines);
+  const result = await chain.submitRun(session.signer, payrollPeriod, lines);
   refresh();
   if (!result.ok) {
     const failure = await describeFailure(
@@ -74,7 +77,7 @@ export async function payNextBatch(runId: unknown): Promise<PayResult> {
 
   const chain = getChainClient();
   const fixtures = getFixtures();
-  const result = await chain.payRun(payrollAgentSigner(), id);
+  const result = await chain.payRun(session.signer, id);
   refresh();
   if (!result.ok) {
     const failure = await describeFailure(chain, fixtures.company.accountId, result.failure);
@@ -108,8 +111,8 @@ export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
 }
 
 /**
- * Pay missed worker: a one-line run for the same period, through the agent's key (SPEC §8.2). The
- * contract decides: a re-added worker still on hold comes back as ERR_PAYEE_NOT_ACTIVE.
+ * Pay missed worker: a one-line run for the same period. The contract decides. A re-added worker
+ * still on hold comes back as ERR_PAYEE_NOT_ACTIVE.
  */
 export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
   const account = z.string().parse(accountId);
@@ -119,10 +122,9 @@ export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
   const fixtures = getFixtures();
   const lines = toPayLines(fixtures.timesheet.filter((l) => l.accountId === account));
   if (lines.length !== 1) throw new Error("That account has no line on this timesheet");
-  const agent = payrollAgentSigner();
-  const submitted = await chain.submitRun(agent, period(fixtures.company.period), lines);
+  const submitted = await chain.submitRun(session.signer, period(fixtures.company.period), lines);
   if (submitted.ok) {
-    const paid = await chain.payRun(agent, submitted.value.runId);
+    const paid = await chain.payRun(session.signer, submitted.value.runId);
     refresh();
     if (paid.ok) return { ok: true };
     const failure = await describeFailure(chain, fixtures.company.accountId, paid.failure);
@@ -272,6 +274,53 @@ export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult
   revalidatePath("/lender");
   if (!receipt) return { ok: false, reason: "refunded" };
   return { ok: true, ref: receipt.ref, ownerGetsSen: receipt.ownerGetsSen };
+}
+
+const FUND_SEN = sen(2_000_000);
+
+/** Adds RM20,000 of testnet tUSDC to this company's payroll treasury. */
+export async function fundTreasury(): Promise<OwnerCallResult> {
+  const session = await requireSigner("owner");
+  if (!session.connected) return { ok: false, reason: "not-connected" };
+  if (getEnv().chainClient !== "near") {
+    return {
+      ok: false,
+      reason: "rejected",
+      failure: {
+        sentence: "Adding tUSDC runs against testnet.",
+        code: "FAKE_CHAIN",
+        ruleCaption: null,
+        shortfallSen: null,
+      },
+    };
+  }
+  const rpc = process.env.NEAR_RPC_URL;
+  if (rpc) configureRpc(rpc);
+  const admin = adminSigner(getEnv().root, process.env.HOMEROLL_ADMIN_PRIVATE_KEY?.trim() ?? null);
+  if (!admin) {
+    return {
+      ok: false,
+      reason: "rejected",
+      failure: {
+        sentence: "The server has no admin key, so it cannot mint tUSDC.",
+        code: "NO_ADMIN",
+        ruleCaption: null,
+        shortfallSen: null,
+      },
+    };
+  }
+  try {
+    await addTreasury(admin, getFixtures().company.accountId, senToUnits(FUND_SEN));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: "rejected",
+      failure: { sentence: message, code: "FUND_FAILED", ruleCaption: null, shortfallSen: null },
+    };
+  }
+  refresh();
+  return { ok: true };
 }
 
 /** Reset demo (SPEC §9.6). In fake mode it restores the fixtures and clears off-chain records. */

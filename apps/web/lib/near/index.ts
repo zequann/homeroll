@@ -1,6 +1,7 @@
 import { type Fixtures, loadFixtures } from "@homeroll/fixtures";
 import { getEnv } from "@/lib/env";
 import type { ChainClient } from "./client";
+import { overlayLiveCompany } from "./demo-company";
 import { FakeChainClient } from "./fake";
 import { NearChainClient } from "./near";
 
@@ -14,9 +15,9 @@ export function getChainClient(): ChainClient {
   return globalForChain.__homerollFake;
 }
 
-let fixtures: Fixtures | undefined;
+let fixtureBase: Fixtures | undefined;
 
 export function getFixtures(): Fixtures {
-  fixtures ??= loadFixtures(getEnv().root);
-  return fixtures;
+  fixtureBase ??= loadFixtures(getEnv().root);
+  return overlayLiveCompany(fixtureBase);
 }

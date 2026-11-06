@@ -1,4 +1,6 @@
 import type { Sen } from "@/lib/fx";
+import { getFixtures } from "@/lib/near";
+import { cacheForEmployer, type EmployerCache } from "@/lib/near/demo-company";
 
 /**
  * Receipts from the mock partners (SPEC §8.6, the `mock_ledger` table of §8.7). In memory until
@@ -65,9 +67,15 @@ function createMockLedger(): MockLedger {
   };
 }
 
-const globalForLedger = globalThis as unknown as { __homerollMockLedger?: MockLedger };
+const globalForLedger = globalThis as unknown as {
+  __homerollMockLedger?: EmployerCache<MockLedger>;
+};
 
 export function getMockLedger(): MockLedger {
-  globalForLedger.__homerollMockLedger ??= createMockLedger();
-  return globalForLedger.__homerollMockLedger;
+  globalForLedger.__homerollMockLedger ??= new Map();
+  return cacheForEmployer(
+    globalForLedger.__homerollMockLedger,
+    getFixtures().company.accountId,
+    createMockLedger,
+  );
 }

@@ -4,17 +4,20 @@ import { invoiceDocument, runInvoiceAgent } from "@/lib/agents/invoice-agent";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { explainProtocol } from "@/lib/errors/explain";
 import { formatRm, type Sen, sen, senToUnits, unitsToSen } from "@/lib/fx";
+import { deriveKey } from "@/lib/keys";
 import { nameOrAccount } from "@/lib/names";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { checkAccessKey, type TxShape } from "@/lib/near/access-key";
 import { period } from "@/lib/near/client";
 import { failureText } from "@/lib/near/failure";
+import { txFailureFromMessage } from "@/lib/near/near";
+import { callMethod } from "@/lib/near/rpc";
 import { toPayLines } from "@/lib/payroll";
 import { maxAdvanceBps } from "@/lib/pool-grades";
 import { payrollAgentSigner } from "@/lib/session";
 
 /**
- * The five attacks of SPEC §11. The lab page and (later) `scripts/attacks/` call the same code.
+ * The five attacks of SPEC §11. The lab page and `scripts/attacks/` call the same code.
  * Each one fools the agent on purpose and returns what the agent proposed, which guard said no,
  * the exact errors, and the treasury and pool before and after. Plain data only.
  */
@@ -206,17 +209,53 @@ async function agentCallsToken(): Promise<AttackResult> {
   ];
 
   const before = await treasurySen();
-  const failures: FailureView[] = attempts.map(({ label, tx }) => {
-    const name = checkAccessKey(agentKey.permission, tx);
-    if (!name) throw new Error(`Attack 05 expected the protocol to refuse ${label}`);
-    const { sentence, ruleCaption } = explainProtocol(name);
-    return {
-      sentence: `${label}: ${sentence}`,
-      code: failureText({ kind: "protocol", name }),
-      ruleCaption,
-      shortfallSen: null,
-    };
-  });
+  const failures: FailureView[] = [];
+  if (chain.network === "fake") {
+    for (const { label, tx } of attempts) {
+      const name = checkAccessKey(agentKey.permission, tx);
+      if (!name) throw new Error(`Attack 05 expected the protocol to refuse ${label}`);
+      const { sentence, ruleCaption } = explainProtocol(name);
+      failures.push({
+        sentence: `${label}: ${sentence}`,
+        code: failureText({ kind: "protocol", name }),
+        ruleCaption,
+        shortfallSen: null,
+      });
+    }
+  } else {
+    const seed = process.env.SERVER_KEY_SEED?.trim();
+    if (!seed) throw new Error("SERVER_KEY_SEED is not set");
+    const signer = deriveKey(seed, fixtures.company.accountId, "payrollAgent");
+    const gas = 30n * 1_000_000_000_000n;
+    for (const { label, tx } of attempts) {
+      const action = tx.actions[0];
+      if (!action?.methodName) throw new Error(`Attack 05 missing method for ${label}`);
+      try {
+        const { txHash } = await callMethod(signer, tx.receiverId, {
+          method: action.methodName,
+          args:
+            action.methodName === "add_payee"
+              ? { account_id: "rahim-wallet.testnet", cap: "1" }
+              : { receiver_id: "rahim-wallet.testnet", amount: "1" },
+          gas,
+          depositYocto: action.depositYocto,
+        });
+        throw new Error(`Attack 05 expected the protocol to refuse ${label}, included ${txHash}`);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("Attack 05 expected")) throw error;
+        const message = errorText(error);
+        const failure = txFailureFromMessage(message);
+        if (failure.kind !== "protocol") throw new Error(message);
+        const { sentence, ruleCaption } = explainProtocol(failure.name);
+        failures.push({
+          sentence: `${label}: ${sentence}`,
+          code: failureText(failure),
+          ruleCaption,
+          shortfallSen: null,
+        });
+      }
+    }
+  }
 
   return {
     id: "05",
@@ -229,4 +268,12 @@ async function agentCallsToken(): Promise<AttackResult> {
     money: { label: "Treasury", beforeSen: before, afterSen: await treasurySen() },
     simulated: chain.network === "fake",
   };
+}
+
+function errorText(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = error.cause instanceof Error ? error.cause.message : "";
+    return cause ? `${error.message}\n${cause}` : error.message;
+  }
+  return String(error);
 }

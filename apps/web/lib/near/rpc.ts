@@ -529,6 +529,20 @@ export async function callMethods(
   return { txHash: outcome.transaction_outcome.id };
 }
 
+export async function transferNear(
+  signer: { accountId: string; secretKey: string },
+  receiverId: string,
+  yocto: bigint,
+): Promise<{ txHash: string }> {
+  if (yocto <= 0n) throw new Error("transfer amount must be positive");
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId,
+    actions: [actions.transfer(yocto)],
+    waitUntil: "FINAL",
+  });
+  return { txHash: outcome.transaction_outcome.id };
+}
+
 export async function callMethod(
   signer: { accountId: string; secretKey: string },
   receiverId: string,

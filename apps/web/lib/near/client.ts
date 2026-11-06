@@ -149,6 +149,6 @@ export interface ChainClient {
   settleInvoice(signer: Signer, invoiceKey: string, paid: Units): Promise<Tx<SettleOutcome>>;
   /** Worker transfer to payout.<root> or offramp.<root>. In near mode it goes through the relayer (SPEC §8.3). */
   ftTransfer(signer: Signer, receiverId: AccountId, amount: Units, memo: string): Promise<Tx<null>>;
-  /** SPEC §9.6. Fake restores fixtures; near calls the on-chain dev's /api/demo route. */
+  /** SPEC §9.6. Fake restores fixtures; near runs provisionDemoCompany. resetDemoEverywhere calls this. */
   resetDemo(): Promise<{ employer: AccountId }>;
 }

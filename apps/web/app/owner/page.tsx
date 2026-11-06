@@ -64,6 +64,7 @@ export default async function OwnerPage({
             periodLabel={view.periodLabel}
             facts={view.facts}
             connected={connected}
+            canFund={view.mode === "testnet"}
           />
 
           <div className={styles.tabs}>

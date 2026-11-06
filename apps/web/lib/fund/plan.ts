@@ -307,3 +307,23 @@ export async function applyFundAction(action: FundAction, admin: AdminSigner): P
 export function readFundEnv(env: Readonly<Record<string, string | undefined>>) {
   return readDeployEnv(env);
 }
+
+/** Mints testnet tUSDC to the admin if needed, then credits one employer's payroll treasury. */
+export async function addTreasury(
+  admin: AdminSigner,
+  employer: AccountId,
+  amount: Units,
+): Promise<void> {
+  const { tusdc, payroll } = accountsFor(admin.accountId);
+  if (!(await storageRegistered(tusdc, admin.accountId))) {
+    await applyFundAction({ kind: "storageDeposit", accountId: admin.accountId, tusdc }, admin);
+  }
+  const balance = await ftBalanceOf(tusdc, admin.accountId);
+  if (balance < amount) {
+    await applyFundAction(
+      { kind: "mint", funder: admin.accountId, tusdc, amount: units(amount - balance) },
+      admin,
+    );
+  }
+  await applyFundAction({ kind: "creditTreasury", payroll, employer, tusdc, amount }, admin);
+}

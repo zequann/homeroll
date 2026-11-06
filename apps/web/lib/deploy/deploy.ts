@@ -130,7 +130,13 @@ const RECEIVER_FLOOR_YOCTO = 1n * 10n ** 24n;
 const ROOT_CUSHION_YOCTO = 1n * 10n ** 24n;
 const TOKEN_STORAGE_DEPOSIT_YOCTO = 10n ** 22n;
 
-const REPO_ROOT = join(import.meta.dirname, "../../../..");
+function repoRoot(): string {
+  const here = import.meta.dirname;
+  if (typeof here !== "string") {
+    throw new Error("contract wasm paths are only available when this file runs as a Node script");
+  }
+  return join(here, "../../../..");
+}
 
 function initArgsFor(name: ContractName, accounts: HomerollAccounts): InitArgs {
   switch (name) {
@@ -385,7 +391,7 @@ export function contractWasmPath(name: ContractName): string {
 function readWasmBundle(): WasmBundle | null {
   const read = (crate: ContractName) => {
     try {
-      return readFileSync(join(REPO_ROOT, contractWasmPath(crate)));
+      return readFileSync(join(repoRoot(), contractWasmPath(crate)));
     } catch {
       return null;
     }
@@ -450,7 +456,7 @@ export async function deployHomeroll(input: DeployInput): Promise<DeployReport> 
   }
 
   try {
-    execSync("pnpm build:contracts", { cwd: REPO_ROOT, stdio: "pipe" });
+    execSync("pnpm build:contracts", { cwd: repoRoot(), stdio: "pipe" });
   } catch {
     return { outcome: "blocked", reason: "build_failed", planned: [] };
   }
@@ -570,7 +576,7 @@ export async function replaceDeployedPayroll(
   }
   let wasm: Uint8Array;
   try {
-    wasm = readFileSync(join(REPO_ROOT, contractWasmPath("payroll")));
+    wasm = readFileSync(join(repoRoot(), contractWasmPath("payroll")));
   } catch {
     return { outcome: "blocked", reason: "wasm_missing" };
   }

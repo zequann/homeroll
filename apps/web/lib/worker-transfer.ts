@@ -2,8 +2,9 @@ import { type AccountId, type HomerollAccounts, homerollAccounts } from "@homero
 import { getEnv } from "@/lib/env";
 import type { Units } from "@/lib/fx";
 import { deriveKey, type RelayerSigner } from "@/lib/keys";
-import { getChainClient } from "@/lib/near";
+import { getChainClient, getFixtures } from "@/lib/near";
 import type { ChainClient } from "@/lib/near/client";
+import { cacheForEmployer, type EmployerCache } from "@/lib/near/demo-company";
 import { decodeSignedDelegate, signDelegate } from "@/lib/near/rpc";
 import { ExposureLog } from "@/lib/relay/exposure";
 import { type RuleName, relay } from "@/lib/relay/relay";
@@ -34,16 +35,23 @@ export function createFakeRelayState(): FakeRelayState {
   return { exposure: ExposureLog.memory(), nonces: new Map() };
 }
 
-const globalForRelay = globalThis as unknown as { __homerollFakeRelay?: FakeRelayState };
+const globalForRelay = globalThis as unknown as {
+  __homerollFakeRelay?: EmployerCache<FakeRelayState>;
+};
 
 function fakeRelayState(): FakeRelayState {
-  globalForRelay.__homerollFakeRelay ??= createFakeRelayState();
-  return globalForRelay.__homerollFakeRelay;
+  globalForRelay.__homerollFakeRelay ??= new Map();
+  return cacheForEmployer(
+    globalForRelay.__homerollFakeRelay,
+    getFixtures().company.accountId,
+    createFakeRelayState,
+  );
 }
 
 /** Reset demo: daily limits and nonces belong to the old demo company. */
 export function resetFakeRelay(): void {
-  globalForRelay.__homerollFakeRelay = createFakeRelayState();
+  globalForRelay.__homerollFakeRelay ??= new Map();
+  globalForRelay.__homerollFakeRelay.set(getFixtures().company.accountId, createFakeRelayState());
 }
 
 export type TransferResult =
@@ -120,7 +128,23 @@ export async function fakeChainTransfer(
   return { ok: false, rule: "unavailable", message: "The relayer is unavailable. Try again." };
 }
 
-/** For server actions. `CHAIN_CLIENT=near` posts to /api/relay instead, once NearChainClient exists. */
+function refusalFromRelay(message: string): TransferResult | null {
+  const marker = "relay rejected: ";
+  const at = message.indexOf(marker);
+  if (at < 0) return null;
+  try {
+    const body = JSON.parse(message.slice(at + marker.length)) as { rule?: string };
+    if (body.rule && body.rule in REFUSAL) {
+      const rule = body.rule as RuleName;
+      return { ok: false, rule, message: REFUSAL[rule] };
+    }
+  } catch {
+    return { ok: false, rule: "unavailable", message: "The relayer is unavailable. Try again." };
+  }
+  return { ok: false, rule: "unavailable", message: "The relayer is unavailable. Try again." };
+}
+
+/** Fake chain signs locally. Testnet uses the worker key and the same relayer policy. */
 export async function workerTransfer(
   from: AccountId,
   to: AccountId,
@@ -128,16 +152,30 @@ export async function workerTransfer(
   memo: string,
 ): Promise<TransferResult> {
   const env = getEnv();
-  if (env.chainClient !== "fake") {
-    throw new Error("Worker transfers on testnet go through POST /api/relay (on-chain dev)");
+  const chain = getChainClient();
+  if (env.chainClient === "fake") {
+    return fakeChainTransfer(
+      chain,
+      homerollAccounts(env.root),
+      fakeRelayState(),
+      from,
+      to,
+      amount,
+      memo,
+    );
   }
-  return fakeChainTransfer(
-    getChainClient(),
-    homerollAccounts(env.root),
-    fakeRelayState(),
-    from,
-    to,
-    amount,
-    memo,
-  );
+  try {
+    const tx = await chain.ftTransfer({ role: "worker", accountId: from }, to, amount, memo);
+    if (!tx.ok) return { ok: false, rule: "unavailable", message: "The transfer was rejected." };
+    return { ok: true, txHash: tx.txHash };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return (
+      refusalFromRelay(message) ?? {
+        ok: false,
+        rule: "unavailable",
+        message: "The relayer is unavailable. Try again.",
+      }
+    );
+  }
 }
