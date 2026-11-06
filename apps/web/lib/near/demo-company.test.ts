@@ -22,6 +22,12 @@ vi.mock("@/lib/fund/plan.ts", async (importOriginal) => {
   return { ...actual, readFundSnapshot, planFund, applyFundAction };
 });
 
+const provisionDepositRoute = vi.fn();
+vi.mock("@/lib/fund/deposit-route.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/fund/deposit-route.ts")>();
+  return { ...actual, provisionDepositRoute };
+});
+
 function seedInput(): SeedInput {
   return {
     network: "testnet",
@@ -46,6 +52,8 @@ beforeEach(() => {
   readFundSnapshot.mockReset();
   planFund.mockReset();
   applyFundAction.mockReset();
+  provisionDepositRoute.mockReset();
+  provisionDepositRoute.mockResolvedValue(undefined);
   ledgerFile = ledgerPath();
   ledgerDir = join(ledgerFile, "..");
   process.env.DEMO_LEDGER_PATH = ledgerFile;
@@ -168,6 +176,18 @@ describe("provisionDemoCompany", () => {
     expect(first).toBeDefined();
     expect(second).toBeDefined();
     expect(second).not.toBe(first);
+  });
+
+  it("tops up the mock solver and the pseudonymous demo lender on every reset (SPEC §8.9)", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    fundConvergesImmediately();
+    const { provisionDemoCompany } = await loadDemoModule();
+    await provisionDemoCompany(seedInput());
+    expect(provisionDepositRoute).toHaveBeenCalledTimes(1);
+    expect(provisionDepositRoute.mock.calls[0]?.[0]).toMatchObject({
+      solver: `solver.${ROOT}`,
+      lender: loadFixtures(ROOT).lender.accountId,
+    });
   });
 
   it("a failed second reset keeps the company already published", async () => {

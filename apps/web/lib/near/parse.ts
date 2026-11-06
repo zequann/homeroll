@@ -4,6 +4,7 @@ import type {
   EmployerView,
   InvoiceStatus,
   InvoiceView,
+  LenderView,
   PayeeView,
   Period,
   PoolView,
@@ -153,6 +154,22 @@ export function parsePool(raw: unknown): PoolView {
     cash: parseUnits("cash", record.cash),
     outstanding: parseUnits("outstanding", record.outstanding),
     feesEarned: parseUnits("fees_earned", record.fees_earned),
+    totalShares: BigInt(decimalString("total_shares", record.total_shares)),
+    minFirstDeposit: parseUnits("min_first_deposit", record.min_first_deposit),
+  };
+}
+
+/** `get_lender`: null for an account the pool has never seen. */
+export function parseLender(raw: unknown): LenderView | null {
+  if (raw === null) return null;
+  if (typeof raw !== "object") throw new Error("lender must be an object or null");
+  const record = raw as Record<string, unknown>;
+  return {
+    shares: BigInt(decimalString("shares", record.shares)),
+    pendingAssets:
+      record.pending_assets === null || record.pending_assets === undefined
+        ? null
+        : parseUnits("pending_assets", record.pending_assets),
   };
 }
 

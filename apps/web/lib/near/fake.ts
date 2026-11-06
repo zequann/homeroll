@@ -15,6 +15,7 @@ import type {
   ChainClient,
   EmployerView,
   InvoiceView,
+  LenderView,
   LineStatus,
   PayeeView,
   PayLine,
@@ -43,6 +44,10 @@ const HOLD_NS = 48n * 60n * 60n * 1_000_000_000n;
  * for what seed must set: at least the RM120,000 advance on INV-2026-1043.
  */
 const MAX_BUYER_EXPOSURE = senToUnits(sen(20_000_000));
+/** R15: the testnet pool's `min_first_deposit` (10 USDC, read with get_pool on 6 Nov 2026). */
+const MIN_FIRST_DEPOSIT = units(10_000_000n);
+/** The mock solver's float after seed or Reset demo (SPEC §8.9, R16). */
+const SOLVER_FLOAT = units(200_000_000_000n);
 
 type Grade = InvoiceView["grade"];
 
@@ -73,7 +78,9 @@ interface FakeState {
   /** The pool's invoice registry, keyed by invoice hash. Empty until the invoice agent attests. */
   invoices: Map<string, FakeInvoice>;
   buyerExposure: Map<string, Units>;
-  pool: { cash: Units; outstanding: Units; feesEarned: Units };
+  pool: { cash: Units; outstanding: Units; feesEarned: Units; totalShares: bigint };
+  /** Pool shares per lender account. An account that ever deposited stays here (R15). */
+  lenders: Map<AccountId, bigint>;
   balances: Map<AccountId, Units>;
   txCounter: number;
 }
@@ -138,7 +145,12 @@ export class FakeChainClient implements ChainClient {
   }
 
   async getPool(): Promise<PoolView> {
-    return { ...this.state.pool };
+    return { ...this.state.pool, minFirstDeposit: MIN_FIRST_DEPOSIT };
+  }
+
+  async getLender(accountId: AccountId): Promise<LenderView | null> {
+    const shares = this.state.lenders.get(accountId);
+    return shares === undefined ? null : { shares, pendingAssets: null };
   }
 
   async ftBalanceOf(accountId: AccountId): Promise<Units> {
@@ -450,6 +462,50 @@ export class FakeChainClient implements ChainClient {
     return { ok: true, txHash, value: null };
   }
 
+  async deliverFromSolver(lender: AccountId, amount: Units): Promise<Tx<null>> {
+    const solver: Signer = { role: "solver", accountId: this.accounts.solver };
+    this.moveTokens(solver.accountId, lender, amount);
+    const txHash = this.nextTxHash();
+    this.log("ft_transfer (mock delivery)", solver, lender, amount, txHash, null);
+    return { ok: true, txHash, value: null };
+  }
+
+  async depositToPool(signer: Signer, amount: Units): Promise<Tx<{ shares: bigint }>> {
+    const s = this.state;
+    const lender = signer.accountId;
+    const balance = s.balances.get(lender) ?? units(0n);
+    // An overdraft is a caller bug (the token panics), not one of our contract errors.
+    if (amount <= 0n || amount > balance) {
+      throw new Error(`ft_transfer_call: ${lender} cannot send that amount`);
+    }
+    // R15: a new lender's first deposit meets the floor. The token refunds it.
+    if (!s.lenders.has(lender) && amount < MIN_FIRST_DEPOSIT) {
+      return this.reject(
+        "deposit",
+        signer,
+        this.accounts.pool,
+        amount,
+        rejectCode("ERR_DEPOSIT_TOO_SMALL"),
+      );
+    }
+    // Shares at current NAV, rounded down, as Books::shares_for_deposit does
+    const nav = s.pool.cash + s.pool.outstanding;
+    const shares =
+      s.pool.totalShares === 0n ? (nav === 0n ? amount : 0n) : (amount * s.pool.totalShares) / nav;
+    const txHash = this.nextTxHash();
+    if (shares === 0n) {
+      // The pool returns a deposit worth no shares, with no error
+      this.log("deposit (refunded)", signer, this.accounts.pool, amount, txHash, null);
+      return { ok: true, txHash, value: { shares: 0n } };
+    }
+    this.moveTokens(lender, this.accounts.pool, amount);
+    s.pool.cash = units(s.pool.cash + amount);
+    s.pool.totalShares += shares;
+    s.lenders.set(lender, (s.lenders.get(lender) ?? 0n) + shares);
+    this.log("deposit", signer, this.accounts.pool, amount, txHash, null);
+    return { ok: true, txHash, value: { shares } };
+  }
+
   async resetDemo(): Promise<{ employer: AccountId }> {
     this.state = this.initialState();
     this.activity.clear();
@@ -460,6 +516,7 @@ export class FakeChainClient implements ChainClient {
 
   private initialState(): FakeState {
     const { company, workers, lender } = this.fixtures;
+    const lent = units(BigInt(lender.depositUsdc) * 1_000_000n);
     return {
       employer: company.accountId,
       treasury: senToUnits(sen(company.treasurySen)),
@@ -471,14 +528,21 @@ export class FakeChainClient implements ChainClient {
       runs: [],
       invoices: new Map(),
       buyerExposure: new Map(),
-      pool: {
-        cash: units(BigInt(lender.depositUsdc) * 1_000_000n),
-        outstanding: units(0n),
-        feesEarned: units(0n),
-      },
-      balances: new Map(),
+      // The fixture lender's earlier deposit, at one share per base unit
+      pool: { cash: lent, outstanding: units(0n), feesEarned: units(0n), totalShares: lent },
+      lenders: new Map([[lender.accountId, lent]]),
+      balances: new Map([[this.accounts.solver, SOLVER_FLOAT]]),
       txCounter: 0,
     };
+  }
+
+  private moveTokens(from: AccountId, to: AccountId, amount: Units): void {
+    const s = this.state;
+    const balance = s.balances.get(from) ?? units(0n);
+    if (amount <= 0n || amount > balance)
+      throw new Error(`ft_transfer: ${from} cannot send that amount`);
+    s.balances.set(from, units(balance - amount));
+    s.balances.set(to, units((s.balances.get(to) ?? 0n) + amount));
   }
 
   /** Methods left off the payroll agent's key (SPEC §6): NEAR rejects it before our code runs. */

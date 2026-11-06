@@ -70,6 +70,10 @@ _Avoid_: investor, LP
 A lender's deposit that starts as another asset on another chain and arrives in the pool as USDC on NEAR.
 _Avoid_: bridge, on-ramp (an on-ramp turns bank money into crypto)
 
+**Private deposit**:
+A cross-chain deposit from a pseudonymous lender account, routed so the public chain cannot link the lender's source wallet to their pool shares. Amounts stay public.
+_Avoid_: anonymous deposit (Homeroll still knows the lender off-chain)
+
 ### Sending money home
 
 **All-in cost**:

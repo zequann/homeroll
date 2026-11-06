@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseEmployer, parseInvoice, parsePayees, parsePool, parseRuns } from "./parse";
+import {
+  parseEmployer,
+  parseInvoice,
+  parseLender,
+  parsePayees,
+  parsePool,
+  parseRuns,
+} from "./parse";
 
 const HASH = "abc";
 
@@ -48,13 +55,28 @@ describe("parsePool", () => {
       outstanding: "2",
       fees_earned: "3",
       max_buyer_exposure: "4",
+      total_shares: "5",
+      min_first_deposit: "6",
       extra: "ignored",
     });
     expect(view).toEqual({
       cash: 1n,
       outstanding: 2n,
       feesEarned: 3n,
+      totalShares: 5n,
+      minFirstDeposit: 6n,
     });
+  });
+});
+
+describe("parseLender", () => {
+  it("maps null to a new lender and reads shares and a pending withdrawal", () => {
+    expect(parseLender(null)).toBeNull();
+    expect(parseLender({ shares: "7", pending_assets: null })).toEqual({
+      shares: 7n,
+      pendingAssets: null,
+    });
+    expect(parseLender({ shares: "7", pending_assets: "3" })?.pendingAssets).toBe(3n);
   });
 });
 

@@ -18,6 +18,7 @@ import type {
   ChainClient,
   EmployerView,
   InvoiceView,
+  LenderView,
   PayeeView,
   PayLine,
   Period,
@@ -33,6 +34,7 @@ import {
   parseAccessKeys,
   parseEmployer,
   parseInvoice,
+  parseLender,
   parsePayees,
   parsePool,
   parseRuns,
@@ -63,6 +65,8 @@ const GAS_OWNER_CALL = 30n * 1_000_000_000_000n;
 const GAS_CREATE_WORKER = 100n * 1_000_000_000_000n;
 // ft_on_transfer forwards the rest with 65 Tgas plus a 20 Tgas callback, and the token resolves after.
 const GAS_SETTLE = 200n * 1_000_000_000_000n;
+// The pool's ft_on_transfer only does arithmetic; the token resolves after.
+const GAS_DEPOSIT = 100n * 1_000_000_000_000n;
 
 const exposure = ExposureLog.files(join(process.cwd(), ".data", "relay-near-client"));
 
@@ -104,7 +108,7 @@ function workerSigner(accountId: AccountId) {
   return deriveKey(requireSeed(), accountId, "worker");
 }
 
-/** The key the server holds for this signer. Lenders sign in their own wallet. */
+/** The key the server holds for this signer. The lender's is a demo key behind "Demo mode" (SPEC §6). */
 function keyFor(signer: Signer) {
   const seed = requireSeed();
   switch (signer.role) {
@@ -119,7 +123,9 @@ function keyFor(signer: Signer) {
     case "worker":
       return deriveKey(seed, signer.accountId, "worker");
     case "lender":
-      return null;
+      return deriveKey(seed, signer.accountId, "lender");
+    case "solver":
+      return deriveKey(seed, signer.accountId, "solver");
   }
 }
 
@@ -174,6 +180,12 @@ export class NearChainClient implements ChainClient {
 
   async getPool(): Promise<PoolView> {
     return parsePool(await viewFunction(this.accounts.pool, "get_pool", {}));
+  }
+
+  async getLender(accountId: AccountId): Promise<LenderView | null> {
+    return parseLender(
+      await viewFunction(this.accounts.pool, "get_lender", { account_id: accountId }),
+    );
   }
 
   async ftBalanceOf(accountId: AccountId): Promise<Units> {
@@ -437,6 +449,48 @@ export class NearChainClient implements ChainClient {
       throw new Error(`relay rejected: ${JSON.stringify(result.body)}`);
     }
     return { ok: true, txHash: result.body.txHash, value: null };
+  }
+
+  async deliverFromSolver(lender: AccountId, amount: Units): Promise<Tx<null>> {
+    const solver = deriveKey(requireSeed(), this.accounts.solver, "solver");
+    try {
+      const { txHash } = await callMethod(solver, this.accounts.tusdc, {
+        method: "ft_transfer",
+        args: { receiver_id: lender, amount: amount.toString(), memo: "mock-delivery" },
+        gas: GAS_FT_TRANSFER,
+        depositYocto: 1n,
+      });
+      return { ok: true, txHash, value: null };
+    } catch (err) {
+      return failed(err);
+    }
+  }
+
+  async depositToPool(signer: Signer, amount: Units): Promise<Tx<{ shares: bigint }>> {
+    if (signer.role !== "lender") throw new Error("depositToPool expects a lender signer");
+    const key = deriveKey(requireSeed(), signer.accountId, "lender");
+    try {
+      const before = (await this.getLender(signer.accountId))?.shares ?? 0n;
+      const { txHash, receiptFailures } = await callMethodWithReceipts(key, this.accounts.tusdc, {
+        method: "ft_transfer_call",
+        args: {
+          receiver_id: this.accounts.pool,
+          amount: amount.toString(),
+          msg: JSON.stringify({ deposit: {} }),
+        },
+        gas: GAS_DEPOSIT,
+        depositYocto: 1n,
+      });
+      // R15 panics inside ft_on_transfer: the token refunds and the outer call still succeeds.
+      for (const failure of receiptFailures) {
+        const error = parseContractError(failure);
+        if (error) return { ok: false, txHash, failure: { kind: "contract", error } };
+      }
+      const after = (await this.getLender(signer.accountId))?.shares ?? 0n;
+      return { ok: true, txHash, value: { shares: after - before } };
+    } catch (err) {
+      return failed(err);
+    }
   }
 
   async resetDemo(): Promise<{ employer: AccountId }> {

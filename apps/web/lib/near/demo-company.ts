@@ -19,6 +19,7 @@ import type { AccountId } from "@homeroll/shared";
 import { homerollAccounts } from "@homeroll/shared";
 import { buyerHash, invoiceHash } from "@homeroll/shared/invoice";
 import { getEnv } from "../env.ts";
+import { derivedDepositRouteAccounts, provisionDepositRoute } from "../fund/deposit-route.ts";
 import {
   applyFundAction,
   companyFloors,
@@ -229,6 +230,11 @@ async function runFund(input: SeedInput, employer: DemoEmployerId, base: Fixture
   for (const action of actions) await applyFundAction(action, admin);
   actions = planFund(await readFundSnapshot(accounts), floors, accounts);
   if (actions.length > 0) throw new Error("fund plan did not converge");
+  // The mock solver's float and the demo lender's account, for private deposits (SPEC §8.9)
+  await provisionDepositRoute(
+    derivedDepositRouteAccounts(input.root, input.seedHex as string, base.lender.accountId),
+    admin,
+  );
 }
 
 function seedPayload(company: DemoCompany, base: Fixtures): SeedCompany {
