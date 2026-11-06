@@ -745,7 +745,7 @@ homeroll/
 - **Contracts:** unit tests + sandbox integration tests (`near-api` + `near-sandbox`, contracts built with `cargo near`) for every rule in §11, including gas measurement for `submit_run` and `pay_run`.
 - **Web:** `vitest` for `lib/*` (fx, hash, grading rules, relayer policy with one test per rule, model-output schema, mock model, chain client).
 - **Attacks:** `pnpm attacks` against a sandbox in CI.
-- **E2E (P1):** Playwright happy path: invoice → advance → payroll → send home → settle, then Reset demo and the same path again.
+- **E2E (P1, built):** Playwright in `apps/web/e2e`. The happy path: invoice → advance → payroll → send home → settle, then Reset demo and the same path again. Also every owner control (reserve, cancel, remove mid-run, finish paying, add back, pay missed worker, add payee), the six attacks, a private deposit, the mock 1Click routes, the wallet sheet and the toolbar. Every page must load without console errors and pass axe's WCAG 2.1 A and AA checks, and the worker pages must fit a 390 px phone without sideways scroll. `pnpm test:e2e` runs it on the fake chain; `pnpm --filter web e2e:testnet` runs it, minus the lender deposit (live quotes vary), against testnet.
 - **CI:** Biome, typecheck, `cargo fmt`, `cargo clippy -D warnings`, `cargo test` (unit + sandbox), vitest, attacks. Must be green on `main`.
 - **One-command local run (P1):** `pnpm demo` starts a local sandbox, deploys, seeds, and runs the app against it with all mocks.
 

@@ -16,6 +16,7 @@
     "prove:relay": "node --experimental-strip-types scripts/prove-relay.ts",
     "attacks": "ATTACKS_CHAIN=near pnpm --filter web exec vitest run --disableConsoleIntercept lib/attacks/attacks.cli.test.ts",
     "test": "pnpm -r --if-present test",
+    "test:e2e": "pnpm --filter web e2e",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "biome check .",
     "format": "biome check --write ."

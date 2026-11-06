@@ -104,6 +104,7 @@ pnpm test                 # vitest in every package
 pnpm lint                 # biome check (pnpm format fixes)
 pnpm typecheck            # tsc in every package
 pnpm attacks              # the six attacks on the live testnet company
+pnpm test:e2e             # Playwright on the fake chain: every page and button, WCAG 2.1 AA checks
 pnpm deploy:testnet       # idempotent deploy of tusdc, factory, payroll, pool to testnet
 pnpm seed:testnet         # registers the fixture employer and its 40 workers on testnet
 pnpm demo:reset           # a fresh demo company on testnet, as the Reset demo button does
@@ -156,3 +157,5 @@ Exact versions, pinned where each is declared.
 | `@types/react`, `@types/react-dom` | 19.3.0 | `apps/web/package.json` |
 | `near-api-js` | 7.4.0 | `apps/web/package.json` |
 | `borsh` | 2.0.0 | `apps/web/package.json` |
+| `@playwright/test` (browser tests) | 1.65.0 | `apps/web/package.json` |
+| `@axe-core/playwright` (WCAG checks) | 4.14.0 | `apps/web/package.json` |

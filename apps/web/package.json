@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:testnet": "playwright test --config playwright.testnet.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +24,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0",
     "@types/node": "catalog:",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
