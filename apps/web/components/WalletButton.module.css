@@ -6,8 +6,9 @@
   align-items: baseline;
   gap: var(--s-2);
 }
+/* On the tinted button fill, ink-3 is 4.4:1 (below WCAG AA); ink-2 is the muted tone that passes */
 .account {
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-weight: 400;
 }
 @media (max-width: 899px) {
