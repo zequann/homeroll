@@ -1,8 +1,10 @@
 "use client";
 
 import { CheckCircle, X } from "@phosphor-icons/react";
+import { usePathname, useRouter } from "next/navigation";
 import { type RefObject, useTransition } from "react";
 import { connect, disconnect } from "@/app/session-actions";
+import { homeFor, mayOpen } from "@/lib/access";
 import { truncateMiddle } from "@/lib/format";
 import type { DemoAccount, DemoAccountKey } from "@/lib/wallet/adapter";
 import { available, unavailableReason } from "@/lib/wallet/near-connect";
@@ -28,10 +30,15 @@ export function WalletSheet({
 }) {
   const [pending, start] = useTransition();
 
+  const router = useRouter();
+  const pathname = usePathname();
   const pick = (key: DemoAccountKey) =>
     start(async () => {
       await connect(key);
       onClose();
+      // Switching wallet takes you to that wallet's page when this one is not one of its own
+      const role = accounts.find((a) => a.key === key)?.role;
+      if (role && !mayOpen(pathname, role)) router.replace(homeFor(role));
     });
 
   return (

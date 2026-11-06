@@ -55,11 +55,13 @@ Do X → see Y:
 1. Open `/owner`, press **Connect wallet** and choose Perabot Jaya Sdn Bhd → the treasury shows RM18,400 and payroll is short.
 2. On **Invoices**, press **Check with agent** on INV-2026-1043 → four checks, Grade A, a RM120,000 offer and a "Mock model" badge. Press **Take advance** → the treasury grows by RM120,000.
 3. Press **Run payroll** → the contract checks the run, the owner signs a payout intent (NEP-413), and the payout rail checks it before anything is paid. The **Payout** panel shows the intent hash and each payout hash. Its **This demo / Production** toggle shows what an outsider sees in each case.
-4. Open `/worker` and connect as Rahim Uddin (the sign-in code is shown on screen; no SMS is sent) → RM1,950.00 within seconds. **Send home** and **Cash out** go through the relayer policy to mock partners.
-5. Back on **Invoices**, press **Buyer paid** → the invoice settles through the mock bank: the pool is repaid RM121,800 and the treasury gets RM28,200.
+4. Switch the wallet to Rahim Uddin (the wallet button in the toolbar) → his phone opens at `/worker` and shows RM1,950.00 within seconds. **Send home** and **Cash out** go through the relayer policy to mock partners. With no wallet connected, `/worker` also offers a mock phone sign-in; the code is shown on screen and no SMS is sent.
+5. Switch back to Perabot Jaya Sdn Bhd → the owner console opens. On **Invoices**, press **Buyer paid** → the invoice settles through the mock bank: the pool is repaid RM121,800 and the treasury gets RM28,200.
 6. Open `/lab` and run each attack → each shows the agent's proposal, who refused it, the exact error, and that no money moved.
 7. On **Workers**, remove a worker while a run is reserved (**Reserve only**) → **Finish paying** skips their line and returns the money. **Add back** starts the 48-hour hold, and **Pay missed worker** is refused with `ERR_PAYEE_NOT_ACTIVE` until it ends.
-8. Open `/lender`, connect as Seri Capital, pick an asset and chain, and press **Deposit privately** → the price is a NEAR Intents dry-run quote (or a labelled sample), the routing and delivery are mocked, and the pool deposit comes from the pseudonymous account `l-4f9t2c.<root>`.
+8. Switch the wallet to Seri Capital → `/lender` opens. Pick an asset and chain, and press **Deposit privately** → the price is a NEAR Intents dry-run quote (or a labelled sample), the routing and delivery are mocked, and the pool deposit comes from the pseudonymous account `l-4f9t2c.<root>`.
+
+Each wallet sees only its own pages: the owner sees Owner and Lab, the worker Worker, the lender Lender. Opening another role's page takes you to your own. With no wallet connected, every page is open.
 
 Set `INTENTS_QUOTES=live` for live NEAR Intents dry-run quotes on the fake chain. Without `NEAR_ROOT_ACCOUNT` the fake chain uses the stand-in root `homeroll-demo.testnet`. Next reads `.env.local` from `apps/web/`.
 

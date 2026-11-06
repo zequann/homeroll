@@ -25,8 +25,22 @@ export async function resetDemo(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "Reset demo" })).toBeEnabled();
 }
 
+/** Disconnects whichever wallet is connected, if any. */
+export async function disconnect(page: Page): Promise<void> {
+  const wallet = page.locator('header button[aria-haspopup="dialog"]');
+  if (/Connect wallet/.test(await wallet.innerText())) return;
+  await wallet.click();
+  await page
+    .getByRole("dialog", { name: "Connect wallet" })
+    .getByRole("button", { name: "Disconnect" })
+    .click();
+  await expect(wallet).toHaveText(/Connect wallet/);
+}
+
 /** The worker app's mock sign-in: the code is shown on screen (SPEC §9.2). */
 export async function signInWorker(page: Page): Promise<void> {
+  // Another wallet would be sent to its own page, so sign in from no wallet at all
+  await disconnect(page);
   await page.goto("/worker");
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByRole("textbox", { name: "Code" }).fill("123456");
@@ -54,6 +68,10 @@ export async function withoutErrors(page: Page, run: () => Promise<void>): Promi
 
 /** WCAG 2.1 A and AA checks with axe. Returns every violation; callers assert on them. */
 export async function axeViolations(page: Page) {
+  // Scan the final colours, not a frame of an entrance fade
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== "running"),
+  );
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();

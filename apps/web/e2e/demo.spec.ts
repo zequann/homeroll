@@ -30,14 +30,14 @@ async function happyPath() {
     // Start: RM18,400 against RM78,000 of wages
     await page.goto("/owner");
     await connect(page, OWNER);
-    await expect(page.getByText(/Short by RM64,600\./)).toBeVisible();
+    await expect(page.getByText(/Short by RM64,600\.00\./)).toBeVisible();
 
     // The Grade C invoice alone still leaves payroll short (a demo moment)
     await ownerTab("Invoices");
     await invoice("INV-2026-1047").getByRole("button", { name: "Check with agent" }).click();
     await expect(invoice("INV-2026-1047")).toContainText("Grade C");
     await invoice("INV-2026-1047").getByRole("button", { name: "Take advance" }).click();
-    await expect(page.getByText(/Short by RM39,400\./)).toBeVisible();
+    await expect(page.getByText(/Short by RM39,400\.00\./)).toBeVisible();
 
     // The invoice with no MyInvois record is declined
     await invoice("INV-2026-1050").getByRole("button", { name: "Check with agent" }).click();
@@ -46,16 +46,16 @@ async function happyPath() {
     // Grade A: RM120,000 advance, then payroll fits
     await invoice("INV-2026-1043").getByRole("button", { name: "Check with agent" }).click();
     await expect(invoice("INV-2026-1043")).toContainText("Grade A");
-    await expect(invoice("INV-2026-1043")).toContainText("RM120,000");
+    await expect(invoice("INV-2026-1043")).toContainText("RM120,000.00");
     await invoice("INV-2026-1043").getByRole("button", { name: "Take advance" }).click();
-    await expect(page.getByText("RM85,600 left after this run.")).toBeVisible();
+    await expect(page.getByText("RM85,600.00 left after this run.")).toBeVisible();
 
     // Run payroll: the contract checks the run, the owner approves the payout intent, it pays
     await page.getByRole("button", { name: "Run payroll" }).click();
-    await expect(page.getByText("October paid · 40 workers · RM78,000")).toBeVisible();
+    await expect(page.getByText("October paid · 40 workers · RM78,000.00")).toBeVisible();
     const payout = page.getByRole("region", { name: "Payout" });
     await expect(payout).toContainText("Confidential layer: simulated");
-    await expect(payout).toContainText("Paid · 40 transfer intents · RM78,000");
+    await expect(payout).toContainText("Paid · 40 transfer intents · RM78,000.00");
     await expect(
       payout.getByText("Simulated. In production this settles on NEAR's private shard."),
     ).toHaveCount(2);
@@ -71,6 +71,17 @@ async function happyPath() {
       has: page.getByRole("columnheader", { name: "Method" }),
     });
     await expect(activity).toContainText("pay_run");
+    // Each row names the button that started it
+    for (const button of ["Run payroll", "Take advance", "Check with agent"]) {
+      await expect(activity.getByRole("cell", { name: button, exact: true }).first()).toBeVisible();
+    }
+    // On testnet every transaction links to NearBlocks; the fake chain's hashes are made up
+    if (process.env.E2E_CHAIN === "testnet") {
+      await expect(activity.getByRole("link", { name: /on NearBlocks/ }).first()).toHaveAttribute(
+        "href",
+        /^https:\/\/testnet\.nearblocks\.io\/txns\//,
+      );
+    }
     await ownerTab("Agent keys");
     await expect(page.getByRole("main")).toContainText("submit_run");
 
@@ -101,11 +112,13 @@ async function happyPath() {
     await expect(page).toHaveURL("/worker");
 
     // The buyer pays: the pool is repaid, the rest reaches the treasury
-    await page.goto("/owner?tab=invoices");
+    // Switching to the owner's wallet takes the browser to the owner console
     await connect(page, OWNER);
+    await expect(page).toHaveURL(/\/owner/);
+    await page.goto("/owner?tab=invoices");
     await invoice("INV-2026-1043").getByRole("button", { name: "Buyer paid" }).click();
     await expect(invoice("INV-2026-1043")).toContainText(
-      "Pool repaid RM121,800, you received RM28,200.",
+      "Pool repaid RM121,800.00, you received RM28,200.00.",
     );
     await expect(invoice("INV-2026-1043")).toContainText("Settled");
   });
@@ -119,6 +132,6 @@ test("the demo runs end to end", async () => {
 test("after Reset demo, the same path runs again", async () => {
   await resetDemo(page);
   await page.goto("/owner");
-  await expect(page.getByText(/Short by RM64,600\./)).toBeVisible();
+  await expect(page.getByText(/Short by RM64,600\.00\./)).toBeVisible();
   await happyPath();
 });

@@ -1,9 +1,9 @@
 import { homerollAccounts } from "@homeroll/shared";
 import { getActivityLog } from "@/lib/activity";
 import { getEnv } from "@/lib/env";
-import { formatUsdc, type Sen, type Units, units, unitsToSen } from "@/lib/fx";
+import { formatUsdc, type Sen, units, unitsToSen } from "@/lib/fx";
 import { getChainClient, getFixtures } from "@/lib/near";
-import { type Period, period, type RunView } from "@/lib/near/client";
+import { type Period, period } from "@/lib/near/client";
 
 /** Rahim's phone, as plain data for server components. Same numbers feed the owner satellite, /worker and the landing stage. */
 export interface RahimView {
@@ -18,11 +18,7 @@ export interface RahimView {
 
 export const WAGE_LABEL = "October wage · Perabot Jaya";
 
-/** `known`: reads the owner page already made, so the phone preview costs no extra chain call. */
-export async function loadRahimView(known?: {
-  runs: RunView[] | null;
-  rahimBalance: Units;
-}): Promise<RahimView> {
+export async function loadRahimView(): Promise<RahimView> {
   const chain = getChainClient();
   const fixtures = getFixtures();
   const rahim = fixtures.workers[0];
@@ -30,12 +26,10 @@ export async function loadRahimView(known?: {
   const payrollPeriod: Period = period(fixtures.company.period);
   const { offramp } = homerollAccounts(getEnv().root);
 
-  const [balance, runs] = known
-    ? [known.rahimBalance, known.runs]
-    : await Promise.all([
-        chain.ftBalanceOf(rahim.accountId),
-        chain.getRuns(fixtures.company.accountId, payrollPeriod),
-      ]);
+  const [balance, runs] = await Promise.all([
+    chain.ftBalanceOf(rahim.accountId),
+    chain.getRuns(fixtures.company.accountId, payrollPeriod),
+  ]);
   const paid = runs
     ?.flatMap((r) => r.lines)
     .find((l) => l.accountId === rahim.accountId && l.status === "Paid");

@@ -597,6 +597,8 @@ R17 is checked by the rail, not by the contract. In this build `pay_run` still m
 
 ## 9. App
 
+**Pages per wallet.** A connected demo wallet sees only its own pages: the owner sees `/owner` and `/lab`, the worker `/worker`, the lender `/lender`. The toolbar lists only those, and opening another role's page redirects to the wallet's own (`lib/access.ts`). Switching wallet in the sheet takes you to that wallet's page. With no wallet connected, every page is open. Owner console amounts always show two decimals (RM18,400.00).
+
 ### 9.1 Owner console — `/owner` (desktop)
 
 Labelled "Owner / HR": in P0 the owner also does HR (D13).

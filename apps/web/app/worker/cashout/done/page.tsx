@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ButtonLink } from "@/components/Button";
 import { formatRm } from "@/lib/fx";
 import { getMockLedger } from "@/lib/mock/ledger";
+import { guardPage } from "@/lib/page-access";
 import styles from "../../_components/worker.module.css";
 
 export const metadata = { title: "Cashed out · Homeroll" };
@@ -14,6 +15,7 @@ export default async function CashedOutPage({
 }: {
   searchParams: Promise<{ ref?: string }>;
 }) {
+  await guardPage("/worker/cashout/done");
   const ref = z
     .string()
     .regex(/^DN-SYN-\d{6}$/)

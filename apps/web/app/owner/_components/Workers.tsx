@@ -147,7 +147,7 @@ export function Workers({
                 </td>
                 <td className="ink-2">{row.role}</td>
                 <td className={`${styles.num} ink-2`}>
-                  <Money value={row.capSen} />
+                  <Money value={row.capSen} decimals={2} />
                 </td>
                 <td>
                   {row.status === "On hold" && row.activeFromMs !== null ? (

@@ -3,6 +3,7 @@
 import { homerollAccounts } from "@homeroll/shared";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { labelAction } from "@/lib/activity";
 import {
   type DepositAsset,
   DepositLimiter,
@@ -107,6 +108,7 @@ function failureSentence(failure: TxFailure): string {
 
 /** Private deposit (SPEC §8.9): mock routing and delivery, then a real pool deposit. */
 export async function depositPrivately(raw: unknown): Promise<DepositResult> {
+  labelAction("Deposit privately");
   const session = await requireSigner("lender");
   if (!session.connected) return { ok: false, message: "Connect the lender wallet to deposit." };
   // Only the demo lender's pseudonymous account, never an account the browser names

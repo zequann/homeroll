@@ -7,10 +7,10 @@ import { type AdvanceOffer, type InvoiceAgentResult, offerFor } from "@/lib/agen
 import { proposePayroll } from "@/lib/agents/payroll";
 import { getEnv } from "@/lib/env";
 import { truncateMiddle } from "@/lib/format";
-import { formatUsdc, type Sen, sen, type Units, units, unitsToSen } from "@/lib/fx";
+import { formatUsdc, type Sen, sen, units, unitsToSen } from "@/lib/fx";
 import { nameOrAccount } from "@/lib/names";
 import { getChainClient, getFixtures } from "@/lib/near";
-import type { AccessKeyView, Grade, LineStatus, RunView } from "@/lib/near/client";
+import type { AccessKeyView, Grade, LineStatus } from "@/lib/near/client";
 import { period } from "@/lib/near/client";
 
 export type PayLineStatus =
@@ -76,20 +76,23 @@ export interface KeyRow {
 export interface ActivityRow {
   id: number;
   when: string;
+  /** The button that started it, e.g. "Run payroll". */
+  button: string | null;
   method: string;
   from: string;
   to: string;
   usdc: string | null;
   rmHint: Sen | null;
   failure: string | null;
+  txHash: string | null;
+  /** NearBlocks testnet page for the transaction. Null on the fake chain, whose hashes are made up. */
+  explorerUrl: string | null;
 }
 
 /** The owner console's tabs. Invoices and agent keys are read from chain only on their own tab. */
 export type OwnerTab = "pay-lines" | "invoices" | "workers" | "agent-keys" | "activity";
 
 export interface OwnerView {
-  /** Reads the phone preview reuses, so the page asks the chain once (server only, not props). */
-  chainReads: { runs: RunView[] | null; rahimBalance: Units };
   mode: "fake" | "testnet";
   companyName: string;
   accountId: string;
@@ -129,23 +132,19 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
   const employer = fixtures.company.accountId;
   const payrollPeriod = period(fixtures.company.period);
   const accounts = homerollAccounts(getEnv().root);
-  const rahim = fixtures.workers[0]?.accountId;
-  if (!rahim) throw new Error("fixtures have no workers");
 
   // Each chain read once per page, and only what the open tab shows (free RPCs rate-limit bursts)
   const none = Promise.resolve([] as AccessKeyView[]);
-  const [employerView, runs, payeeViews, rahimBalance, ownerKeys, agentKeys, invoiceViews] =
-    await Promise.all([
-      chain.getEmployer(employer),
-      chain.getRuns(employer, payrollPeriod),
-      chain.getPayees(employer),
-      chain.ftBalanceOf(rahim),
-      tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
-      tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
-      tab === "invoices"
-        ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
-        : Promise.resolve(fixtures.invoices.map(() => null)),
-    ]);
+  const [employerView, runs, payeeViews, ownerKeys, agentKeys, invoiceViews] = await Promise.all([
+    chain.getEmployer(employer),
+    chain.getRuns(employer, payrollPeriod),
+    chain.getPayees(employer),
+    tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
+    tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
+    tab === "invoices"
+      ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
+      : Promise.resolve(fixtures.invoices.map(() => null)),
+  ]);
   if (!employerView) throw new Error(`The chain does not know ${employer}`);
 
   // The line status of a worker is their line in the newest run that has one.
@@ -256,7 +255,6 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
   });
 
   return {
-    chainReads: { runs, rahimBalance },
     mode: chain.network === "fake" ? "fake" : "testnet",
     companyName: fixtures.company.name,
     accountId: employer,
@@ -275,12 +273,18 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
       .map((a) => ({
         id: a.id,
         when: time.format(a.at),
+        button: a.action,
         method: a.method,
         from: truncateMiddle(a.from),
         to: truncateMiddle(a.to),
         usdc: a.amount === null ? null : formatUsdc(units(a.amount)),
         rmHint: a.amount === null ? null : unitsToSen(units(a.amount), "nearest"),
         failure: a.failure,
+        txHash: a.txHash,
+        explorerUrl:
+          chain.network === "testnet" && a.txHash
+            ? `https://testnet.nearblocks.io/txns/${a.txHash}`
+            : null,
       })),
   };
 }

@@ -1,10 +1,12 @@
 import { ResetDemoButton } from "@/components/ResetDemoButton";
+import { guardPage } from "@/lib/page-access";
 import { AttackCard } from "./_components/AttackCard";
 import styles from "./_components/lab.module.css";
 
 export const metadata = { title: "Attack lab · Homeroll" };
 
-export default function LabPage() {
+export default async function LabPage() {
+  await guardPage("/lab");
   return (
     <main className="page">
       <div className={styles.stack}>

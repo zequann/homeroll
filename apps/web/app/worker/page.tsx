@@ -1,6 +1,7 @@
 import { Bank, PaperPlaneTilt } from "@phosphor-icons/react/ssr";
 import { ButtonLink } from "@/components/Button";
 import { RollingMoney } from "@/components/RollingMoney";
+import { guardPage } from "@/lib/page-access";
 import { readSession } from "@/lib/session";
 import { loadRahimView } from "@/lib/views/rahim";
 import { ActivityList, type WorkerActivityItem } from "./_components/ActivityList";
@@ -11,6 +12,7 @@ import styles from "./_components/worker.module.css";
 export const metadata = { title: "Worker · Homeroll" };
 
 export default async function WorkerPage() {
+  await guardPage("/worker");
   const [rahim, session] = await Promise.all([loadRahimView(), readSession()]);
   const connected = session?.key === "worker:w-7k2q9x";
   const items: WorkerActivityItem[] = [

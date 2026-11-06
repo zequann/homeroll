@@ -69,10 +69,10 @@ export function PayLines({
                 </td>
                 <td className="ink-2">{row.role}</td>
                 <td className={styles.num}>
-                  <Money value={row.netSen} />
+                  <Money value={row.netSen} decimals={2} />
                 </td>
                 <td className={`${styles.num} ink-2`}>
-                  <Money value={row.capSen} />
+                  <Money value={row.capSen} decimals={2} />
                 </td>
                 <td>
                   <StatusCell status={row.status} />

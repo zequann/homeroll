@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getChainClient } from "@/lib/near";
 import type { ChainClient } from "@/lib/near/client";
 import { loadOwnerView, type OwnerTab } from "./owner";
-import { loadRahimView } from "./rahim";
 
 // Free RPC endpoints rate-limit bursts, so each owner page load reads only what it shows.
 const READS = [
@@ -33,12 +32,11 @@ describe("owner page chain reads", () => {
     ["agent-keys", 0, 2],
   ] as [OwnerTab, number, number][])("%s reads each value once", async (tab, invoices, keys) => {
     const spies = countReads();
-    const view = await loadOwnerView(tab);
-    await loadRahimView(view.chainReads);
+    await loadOwnerView(tab);
     expect(spies.getEmployer).toHaveBeenCalledTimes(1);
     expect(spies.getRuns).toHaveBeenCalledTimes(1);
     expect(spies.getPayees).toHaveBeenCalledTimes(1);
-    expect(spies.ftBalanceOf).toHaveBeenCalledTimes(1);
+    expect(spies.ftBalanceOf).toHaveBeenCalledTimes(0);
     expect(spies.getInvoice).toHaveBeenCalledTimes(invoices);
     expect(spies.getAccessKeys).toHaveBeenCalledTimes(keys);
   });

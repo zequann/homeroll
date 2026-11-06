@@ -27,7 +27,7 @@ const worker = (name: string) => page.getByRole("row", { name: new RegExp(name) 
 
 test("Take advance on the shortfall line opens the invoices", async () => {
   await withoutErrors(page, async () => {
-    await expect(page.getByText(/Short by RM64,600\./)).toBeVisible();
+    await expect(page.getByText(/Short by RM64,600\.00\./)).toBeVisible();
     await page.getByRole("button", { name: "Take advance" }).click();
     await expect(page).toHaveURL(/tab=invoices/);
   });
@@ -45,12 +45,12 @@ test("Reserve only, then Cancel run, puts the money back", async () => {
   await withoutErrors(page, async () => {
     await invoice("INV-2026-1043").getByRole("button", { name: "Check with agent" }).click();
     await invoice("INV-2026-1043").getByRole("button", { name: "Take advance" }).click();
-    await expect(page.getByText("RM60,400 left after this run.")).toBeVisible();
+    await expect(page.getByText("RM60,400.00 left after this run.")).toBeVisible();
 
     await page.getByRole("button", { name: "Reserve only" }).click();
     await expect(page.getByText("40 pay lines reserved. Nothing is paid yet.")).toBeVisible();
     await page.getByRole("button", { name: "Cancel run" }).click();
-    await expect(page.getByText("RM60,400 left after this run.")).toBeVisible();
+    await expect(page.getByText("RM60,400.00 left after this run.")).toBeVisible();
   });
 });
 

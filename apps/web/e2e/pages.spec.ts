@@ -1,5 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { axeViolations, connect, OWNER, resetDemo, settled, withoutErrors } from "./helpers";
+import {
+  axeViolations,
+  connect,
+  LENDER,
+  OWNER,
+  RAHIM,
+  resetDemo,
+  settled,
+  withoutErrors,
+} from "./helpers";
 
 // Every page a visitor can open, before and after connecting. The done pages need a real
 // receipt, so demo.spec.ts checks them inside the flow.
@@ -71,6 +80,36 @@ test("the toolbar reaches every page", async ({ page }) => {
       page.getByRole("navigation", { name: "Surfaces" }).getByRole("link", { name: label }),
     ).toBeVisible();
   }
+});
+
+test("each wallet sees only its own pages, and switching wallet takes you there", async ({
+  page,
+}) => {
+  const links = page.getByRole("navigation", { name: "Pages" }).getByRole("link");
+  await page.goto("/lender");
+  await expect(links).toHaveText(["Owner", "Worker", "Lab", "Lender"]);
+
+  await connect(page, LENDER);
+  await expect(links).toHaveText(["Lender"]);
+  await page.goto("/owner");
+  await expect(page).toHaveURL("/lender");
+
+  await connect(page, OWNER);
+  await expect(page).toHaveURL("/owner");
+  await expect(links).toHaveText(["Owner", "Lab"]);
+  await page.goto("/lab");
+  await expect(page).toHaveURL("/lab");
+  await page.goto("/worker/send");
+  await expect(page).toHaveURL("/owner");
+
+  await connect(page, RAHIM);
+  await expect(page).toHaveURL("/worker");
+  await expect(links).toHaveText(["Worker"]);
+  await page.goto("/lender");
+  await expect(page).toHaveURL("/worker");
+  // The owner console no longer carries Rahim's phone
+  await connect(page, OWNER);
+  await expect(page.getByRole("complementary", { name: "Rahim's phone" })).toHaveCount(0);
 });
 
 test("the wallet sheet opens, closes, connects and disconnects", async ({ page }) => {

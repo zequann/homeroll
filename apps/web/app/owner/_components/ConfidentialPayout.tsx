@@ -73,7 +73,7 @@ export function ConfidentialPayout({
         <div className={styles.status}>
           <p>
             {STATUS_TEXT[payout.status]} · {payout.lineCount} transfer intents ·{" "}
-            {formatRm(payout.amountSen)}
+            {formatRm(payout.amountSen, { decimals: 2 })}
           </p>
           <p className="t-caption ink-3">
             Payout intent <span className="t-mono">{payout.intentHash.slice(0, 16)}…</span>, signed

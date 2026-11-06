@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { labelAction } from "@/lib/activity";
 import { addedWorkers, newWorkerAccountId } from "@/lib/added-workers";
 import { invoiceAgentDeps, invoiceResults } from "@/lib/agents";
 import {
@@ -48,8 +49,11 @@ function refresh() {
   revalidatePath("/worker");
 }
 
+const payrollButton = z.enum(["Run payroll", "Reserve only", "Finish paying"]);
+
 /** Owner presses Run payroll: the payroll agent proposes the October run, the contract checks it whole. */
-export async function submitPayroll(): Promise<SubmitResult> {
+export async function submitPayroll(button: unknown = "Run payroll"): Promise<SubmitResult> {
+  labelAction(payrollButton.parse(button));
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
 
@@ -105,7 +109,12 @@ export async function approvePayout(runId: unknown): Promise<ApproveResult> {
  * One pay_run batch, only with a sealed approval of this run's payout intent (R17). The browser
  * calls it until `done`. The token, not this server's memory, carries the approval.
  */
-export async function payNextBatch(runId: unknown, approvalToken: unknown): Promise<PayResult> {
+export async function payNextBatch(
+  runId: unknown,
+  approvalToken: unknown,
+  button: unknown = "Run payroll",
+): Promise<PayResult> {
+  labelAction(payrollButton.parse(button));
   const id = z.number().int().nonnegative().parse(runId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -142,6 +151,7 @@ export type OwnerCallResult =
 
 /** Cancel run: the owner's key only, the agent's key cannot (SPEC §7.3). */
 export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
+  labelAction("Cancel run");
   const id = z.number().int().nonnegative().parse(runId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -158,6 +168,7 @@ export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
  * still on hold comes back as ERR_PAYEE_NOT_ACTIVE.
  */
 export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
+  labelAction("Pay missed worker");
   const account = z.string().parse(accountId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -214,6 +225,7 @@ export type AddPayeeResult = OwnerCallResult | { ok: false; reason: "invalid"; m
 
 /** Add payee: the server picks a random account; the name stays off-chain (rule R13). */
 export async function addPayee(input: unknown): Promise<AddPayeeResult> {
+  labelAction("Add payee");
   const parsed = newPayeeSchema.safeParse(input);
   const capSen = parsed.success ? parseRm(parsed.data.cap) : null;
   if (!parsed.success || capSen === null || capSen <= 0) {
@@ -244,6 +256,7 @@ export async function addPayee(input: unknown): Promise<AddPayeeResult> {
 
 /** Add a removed worker back with their old wage cap. After onboarding the hold applies (R3). */
 export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult> {
+  labelAction("Add back");
   const account = z.string().parse(accountId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -261,6 +274,7 @@ export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult>
 }
 
 export async function removePayee(accountId: unknown): Promise<OwnerCallResult> {
+  labelAction("Remove");
   const account = z.string().parse(accountId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -281,6 +295,7 @@ export type CheckResult =
  * In this build the "upload" is the demo company's own generated document.
  */
 export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult> {
+  labelAction("Check with agent");
   const invoice = fixtureInvoice(invoiceNumber);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -296,6 +311,7 @@ export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult>
 }
 
 export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult> {
+  labelAction("Take advance");
   const invoice = fixtureInvoice(invoiceNumber);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -325,6 +341,7 @@ export type BuyerPaidResult =
 
 /** Mock bank: the buyer pays the invoice in full and escrow settles it on the pool (SPEC §8.6). */
 export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult> {
+  labelAction("Buyer paid");
   const invoice = fixtureInvoice(invoiceNumber);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
