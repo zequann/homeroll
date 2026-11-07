@@ -4,14 +4,15 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { labelAction } from "@/lib/activity";
 import { addedWorkers, newWorkerAccountId } from "@/lib/added-workers";
-import { invoiceAgentDeps, invoiceResults } from "@/lib/agents";
+import { invoiceAgentDeps, rememberInvoiceResult } from "@/lib/agents";
 import {
   type InvoiceAgentResult,
-  invoiceDocument,
+  invoiceDocumentFromPdf,
   offerFor,
   runInvoiceAgent,
 } from "@/lib/agents/invoice-agent";
 import { proposePayroll } from "@/lib/agents/payroll";
+import { checkUploadedInvoice, type UploadOutcome } from "@/lib/agents/upload";
 import { resetDemoEverywhere } from "@/lib/demo-reset";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { getEnv } from "@/lib/env";
@@ -292,7 +293,7 @@ export type CheckResult =
 
 /**
  * Owner uploads an invoice: the invoice agent extracts, checks, grades and attests it (SPEC §8.1).
- * In this build the "upload" is the demo company's own generated document.
+ * In this build the "upload" is the demo company's own generated PDF, read through its text layer.
  */
 export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult> {
   labelAction("Check with agent");
@@ -301,13 +302,30 @@ export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult>
   if (!session.connected) return { ok: false, reason: "not-connected" };
 
   const deps = invoiceAgentDeps();
-  const result = await runInvoiceAgent(deps, invoiceDocument(deps.fixtures, invoice));
-  // Keep the first successful check: a re-run that the registry refuses must not hide it
-  if (result.attest.ok || !invoiceResults().has(invoice.number)) {
-    invoiceResults().set(invoice.number, result);
-  }
+  const result = await runInvoiceAgent(deps, await invoiceDocumentFromPdf(deps.fixtures, invoice));
+  rememberInvoiceResult(result, invoice.hash);
   refresh();
   return { ok: true, result };
+}
+
+/** Owner uploads an invoice PDF (SPEC §9.1). See `lib/agents/upload.ts` for what is checked. */
+export async function uploadInvoice(form: FormData): Promise<UploadOutcome> {
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return { ok: false, reason: "not-a-pdf", message: "Choose a PDF invoice to upload." };
+  }
+  const session = await requireSigner("owner");
+  if (!session.connected) {
+    return { ok: false, reason: "unreadable", message: "Connect the owner wallet to upload." };
+  }
+  const deps = invoiceAgentDeps();
+  const outcome = await checkUploadedInvoice(deps, new Uint8Array(await file.arrayBuffer()));
+  if (outcome.ok) {
+    const fixture = deps.fixtures.invoices.find((i) => i.number === outcome.result.invoiceNumber);
+    if (fixture) rememberInvoiceResult(outcome.result, fixture.hash);
+  }
+  refresh();
+  return outcome;
 }
 
 export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult> {

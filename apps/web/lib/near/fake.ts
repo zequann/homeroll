@@ -33,7 +33,7 @@ import type {
 import { failureText } from "./failure";
 
 /** The contract's `max_lines_per_call` (SPEC §7.3). 40 workers take two calls; Rahim is in the first. */
-export const FAKE_MAX_LINES_PER_CALL = 36;
+export const FAKE_MAX_LINES_PER_CALL = 20;
 /** The demo floor (SPEC §7.3 initial config). */
 const MAX_LINES_PER_RUN = 40;
 const YOCTO_PER_NEAR = 10n ** 24n;
@@ -42,10 +42,10 @@ const MAX_PAYEES_PER_EMPLOYER = 40;
 /** R3: the 48-hour hold. */
 const HOLD_NS = 48n * 60n * 60n * 1_000_000_000n;
 /**
- * Pool's per-buyer limit (R11). The contract starts at 0 and the admin sets it, so this stands in
- * for what seed must set: at least the RM120,000 advance on INV-2026-1043.
+ * Pool's per-buyer limit (R11, SPEC §7.4): RM120,000, the value set on testnet. It exactly covers
+ * the advance on INV-2026-1043, and the same buyer cannot go a sen higher.
  */
-const MAX_BUYER_EXPOSURE = senToUnits(sen(20_000_000));
+const MAX_BUYER_EXPOSURE = senToUnits(sen(12_000_000));
 /** R15: the testnet pool's `min_first_deposit` (10 USDC, read with get_pool on 6 Nov 2026). */
 const MIN_FIRST_DEPOSIT = units(10_000_000n);
 /** The mock solver's float after seed or Reset demo (SPEC §8.9, R16). */

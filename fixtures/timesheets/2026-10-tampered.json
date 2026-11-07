@@ -1,162 +1,242 @@
 [
   {
     "name": "w-7k2q9x",
-    "amountSen": 195000
+    "baseSen": 195000,
+    "overtimeHours": 0,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-3m8d1p",
-    "amountSen": 188000
+    "baseSen": 183000,
+    "overtimeHours": 5,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-9t4c6v",
-    "amountSen": 210000
+    "baseSen": 200000,
+    "overtimeHours": 10,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-2h5n8r",
-    "amountSen": 176000
+    "baseSen": 174000,
+    "overtimeHours": 2,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-6b1x4k",
-    "amountSen": 1924000
+    "baseSen": 217000,
+    "overtimeHours": 900,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-8f3j7s",
-    "amountSen": 182000
+    "baseSen": 170000,
+    "overtimeHours": 12,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-gt9maa",
-    "amountSen": 175000
+    "baseSen": 171000,
+    "overtimeHours": 4,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-zfwk5s",
-    "amountSen": 186000
+    "baseSen": 177000,
+    "overtimeHours": 9,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-8t8449",
-    "amountSen": 175000
+    "baseSen": 174000,
+    "overtimeHours": 1,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-2pbx77",
-    "amountSen": 180000
+    "baseSen": 174000,
+    "overtimeHours": 6,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-mj57rn",
-    "amountSen": 193000
+    "baseSen": 182000,
+    "overtimeHours": 11,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-ysk99r",
-    "amountSen": 207000
+    "baseSen": 204000,
+    "overtimeHours": 3,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-3226sr",
-    "amountSen": 210000
+    "baseSen": 202000,
+    "overtimeHours": 8,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-jwjge4",
-    "amountSen": 195000
+    "baseSen": 195000,
+    "overtimeHours": 0,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-neviuc",
-    "amountSen": 179000
+    "baseSen": 174000,
+    "overtimeHours": 5,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-7h7dej",
-    "amountSen": 188000
+    "baseSen": 178000,
+    "overtimeHours": 10,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-fm3sm2",
-    "amountSen": 217000
+    "baseSen": 215000,
+    "overtimeHours": 2,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-h7ppxm",
-    "amountSen": 199000
+    "baseSen": 192000,
+    "overtimeHours": 7,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-5bfc6g",
-    "amountSen": 198000
+    "baseSen": 186000,
+    "overtimeHours": 12,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-nnb38e",
-    "amountSen": 187000
+    "baseSen": 183000,
+    "overtimeHours": 4,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-7bpkf3",
-    "amountSen": 193000
+    "baseSen": 184000,
+    "overtimeHours": 9,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-2vt454",
-    "amountSen": 207000
+    "baseSen": 206000,
+    "overtimeHours": 1,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-w7zvaz",
-    "amountSen": 179000
+    "baseSen": 173000,
+    "overtimeHours": 6,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-hyy34t",
-    "amountSen": 206000
+    "baseSen": 195000,
+    "overtimeHours": 11,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-ryk3sh",
-    "amountSen": 192000
+    "baseSen": 189000,
+    "overtimeHours": 3,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-wi8n6w",
-    "amountSen": 207000
+    "baseSen": 199000,
+    "overtimeHours": 8,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-jti2it",
-    "amountSen": 200000
+    "baseSen": 200000,
+    "overtimeHours": 0,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-3jfyeq",
-    "amountSen": 206000
+    "baseSen": 201000,
+    "overtimeHours": 5,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-biftam",
-    "amountSen": 180000
+    "baseSen": 170000,
+    "overtimeHours": 10,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-gypmj8",
-    "amountSen": 215000
+    "baseSen": 213000,
+    "overtimeHours": 2,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-uvg7kx",
-    "amountSen": 216000
+    "baseSen": 209000,
+    "overtimeHours": 7,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-k5fayu",
-    "amountSen": 210000
+    "baseSen": 198000,
+    "overtimeHours": 12,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-iic5q2",
-    "amountSen": 196000
+    "baseSen": 192000,
+    "overtimeHours": 4,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-9ntraw",
-    "amountSen": 175000
+    "baseSen": 166000,
+    "overtimeHours": 9,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-ibbqms",
-    "amountSen": 203000
+    "baseSen": 202000,
+    "overtimeHours": 1,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-g6j4x6",
-    "amountSen": 195000
+    "baseSen": 189000,
+    "overtimeHours": 6,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-cxnpu4",
-    "amountSen": 175000
+    "baseSen": 164000,
+    "overtimeHours": 11,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-nmuund",
-    "amountSen": 186000
+    "baseSen": 183000,
+    "overtimeHours": 3,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-y8rtxf",
-    "amountSen": 191000
+    "baseSen": 183000,
+    "overtimeHours": 8,
+    "overtimeRateSen": 1000
   },
   {
     "name": "w-zv34vv",
-    "amountSen": 204000
+    "baseSen": 204000,
+    "overtimeHours": 0,
+    "overtimeRateSen": 1000
   }
 ]

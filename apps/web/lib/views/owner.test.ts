@@ -39,6 +39,7 @@ describe("owner page chain reads", () => {
     expect(spies.ftBalanceOf).toHaveBeenCalledTimes(0);
     expect(spies.getInvoice).toHaveBeenCalledTimes(invoices);
     expect(spies.getAccessKeys).toHaveBeenCalledTimes(keys);
+    expect(spies.getPool).toHaveBeenCalledTimes(tab === "invoices" ? 1 : 0);
   });
 
   it("still shows the invoices and keys on their own tabs", async () => {

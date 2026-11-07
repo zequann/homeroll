@@ -57,9 +57,10 @@ Do X → see Y:
 3. Press **Run payroll** → the contract checks the run, the owner signs a payout intent (NEP-413), and the payout rail checks it before anything is paid. The **Payout** panel shows the intent hash and each payout hash. Its **This demo / Production** toggle shows what an outsider sees in each case.
 4. Switch the wallet to Rahim Uddin (the wallet button in the toolbar) → his phone opens at `/worker` and shows RM1,950.00 within seconds. **Send home** and **Cash out** go through the relayer policy to mock partners. With no wallet connected, `/worker` also offers a mock phone sign-in; the code is shown on screen and no SMS is sent.
 5. Switch back to Perabot Jaya Sdn Bhd → the owner console opens. On **Invoices**, press **Buyer paid** → the invoice settles through the mock bank: the pool is repaid RM121,800 and the treasury gets RM28,200.
-6. Open `/lab` and run each attack → each shows the agent's proposal, who refused it, the exact error, and that no money moved.
-7. On **Workers**, remove a worker while a run is reserved (**Reserve only**) → **Finish paying** skips their line and returns the money. **Add back** starts the 48-hour hold, and **Pay missed worker** is refused with `ERR_PAYEE_NOT_ACTIVE` until it ends.
-8. Switch the wallet to Seri Capital → `/lender` opens. Pick an asset and chain, and press **Deposit privately** → the price is a NEAR Intents dry-run quote (or a labelled sample), the routing and delivery are mocked, and the pool deposit comes from the pseudonymous account `l-4f9t2c.<root>`.
+6. On **Invoices**, press **Download PDF**, then **Upload invoice** with that file → the same checks and grade. Upload the tampered copy linked from attack 04 in `/lab` → its text is white, so it looks clean, and the model says "A+" and "100%", but the code keeps Grade A and an 80% cap.
+7. Open `/lab` and run each attack → each shows the agent's proposal, who refused it, the exact error, and that no money moved.
+8. On **Workers**, remove a worker while a run is reserved (**Reserve only**) → **Finish paying** skips their line and returns the money. **Add back** starts the 48-hour hold, and **Pay missed worker** is refused with `ERR_PAYEE_NOT_ACTIVE` until it ends.
+9. Switch the wallet to Seri Capital → `/lender` opens. Pick an asset and chain, and press **Deposit privately** → the price is a NEAR Intents dry-run quote (or a labelled sample), the routing and delivery are mocked, and the pool deposit comes from the pseudonymous account `l-4f9t2c.<root>`.
 
 Each wallet sees only its own pages: the owner sees Owner and Lab, the worker Worker, the lender Lender. Opening another role's page takes you to your own. With no wallet connected, every page is open.
 
@@ -124,12 +125,13 @@ pnpm demo:reset           # a fresh demo company on testnet, as the Reset demo b
 8. Real-world operation would need licensed partners regulated by Bank Negara Malaysia.
 9. A payee is paid at most once per period through payroll, so a top-up for a worker already paid (for example forgotten overtime) is paid by the owner by hand.
 10. The contract checks limits, not correctness: an agent can still propose a wrong amount below the wage cap, so the owner reviews the preview before running payroll.
-11. The payout partner's 1.0% all-in fee (including FX margin) is an assumption, not a quote.
+11. The payout partner's 1.0% all-in fee (including FX margin) and the DuitNow off-ramp's 0.5% fee are assumptions, not quotes.
 12. Lender privacy hides who a lender is, not how much they lend. Pool deposits and share balances are public, and a deposit can be matched by amount and time to the swap that funded it.
 13. Confidential Intents is simulated: payouts are real, public testnet transfers. Even in production, while the payroll contract runs on the public chain, `submit_run` shows every wage.
 14. The demo pays October 2026. The contract only accepts the current or previous month, so from 1 December 2026 Run payroll needs the fixture period moved forward.
 15. `update_cap` and `withdraw` (SPEC §7.3) are not in the payroll contract yet. The app does not call them.
 16. The app keeps some state in memory and in `apps/web/.data/`, so it runs as one long-lived server (`pnpm --filter web build && pnpm --filter web start`).
+17. The mock invoice model reads this project's invoice template only, so other PDFs are refused.
 
 ## Related work
 
@@ -159,5 +161,6 @@ Exact versions, pinned where each is declared.
 | `@types/react`, `@types/react-dom` | 19.3.0 | `apps/web/package.json` |
 | `near-api-js` | 7.4.0 | `apps/web/package.json` |
 | `borsh` | 2.0.0 | `apps/web/package.json` |
+| `pdf-lib` (invoice PDFs, pure JS) | 1.17.1 | `packages/shared/package.json` |
 | `@playwright/test` (browser tests) | 1.65.0 | `apps/web/package.json` |
 | `@axe-core/playwright` (WCAG checks) | 4.14.0 | `apps/web/package.json` |

@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./invoice": "./src/invoice.ts"
+    "./invoice": "./src/invoice.ts",
+    "./invoice-pdf": "./src/invoice-pdf.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -14,5 +15,8 @@
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1"
   }
 }

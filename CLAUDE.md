@@ -74,6 +74,7 @@ pnpm test:contracts       # cargo test: unit tests + sandbox integration tests (
 pnpm test                 # vitest in every package
 pnpm lint                 # biome check (pnpm format fixes)
 pnpm typecheck            # tsc in every package
+pnpm fixtures:invoices    # regenerate fixtures/invoices/*.pdf from the invoice template
 pnpm test:e2e             # Playwright on the fake chain (builds the app, serves it on :3100); needs `pnpm --filter web exec playwright install chromium` once
 pnpm --filter web e2e:testnet   # the same browser tests against testnet (:3101), slower, testnet tokens only
 pnpm attacks              # six SPEC §11 attacks on the live testnet company; exit 0 = each was refused and moved no money

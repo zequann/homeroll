@@ -29,6 +29,8 @@ export interface PayLineRow {
   name: string;
   role: string;
   netSen: Sen;
+  /** Overtime hours in the net wage, from the timesheet (SPEC §8.2). */
+  overtimeHours?: number;
   capSen: Sen;
   status: PayLineStatus;
   /** A failed, skipped or cancelled line that can be paid in a new one-line run (SPEC §7.3). */
@@ -107,6 +109,8 @@ export interface OwnerView {
   invoices: InvoiceRow[];
   keys: KeyRow[];
   activity: ActivityRow[];
+  /** SPEC §9.1 dashboard figures. Read only on the Invoices tab (free RPCs rate-limit bursts). */
+  figures: { advancedSen: Sen; poolCashSen: Sen } | null;
 }
 
 const STATUS_WORD: Record<LineStatus, PayLineStatus> = {
@@ -135,16 +139,19 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
 
   // Each chain read once per page, and only what the open tab shows (free RPCs rate-limit bursts)
   const none = Promise.resolve([] as AccessKeyView[]);
-  const [employerView, runs, payeeViews, ownerKeys, agentKeys, invoiceViews] = await Promise.all([
-    chain.getEmployer(employer),
-    chain.getRuns(employer, payrollPeriod),
-    chain.getPayees(employer),
-    tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
-    tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
-    tab === "invoices"
-      ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
-      : Promise.resolve(fixtures.invoices.map(() => null)),
-  ]);
+  const [employerView, runs, payeeViews, ownerKeys, agentKeys, invoiceViews, pool] =
+    await Promise.all([
+      chain.getEmployer(employer),
+      chain.getRuns(employer, payrollPeriod),
+      chain.getPayees(employer),
+      tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
+      tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
+      tab === "invoices"
+        ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
+        : Promise.resolve(fixtures.invoices.map(() => null)),
+      // The Invoices tab's figures; no other tab pays for this read
+      tab === "invoices" ? chain.getPool() : Promise.resolve(null),
+    ]);
   if (!employerView) throw new Error(`The chain does not know ${employer}`);
 
   // The line status of a worker is their line in the newest run that has one.
@@ -178,6 +185,7 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
       name: nameOrAccount(w.accountId),
       role: w.role,
       netSen: sen(line?.amountSen ?? 0),
+      overtimeHours: line?.overtimeHours ?? 0,
       capSen: sen(w.capSen),
       status,
       missed: unpaid && reason !== "not-a-payee",
@@ -266,6 +274,20 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
     payLines,
     payees,
     onboarding: employerView.onboarding,
+    figures: pool
+      ? {
+          advancedSen: unitsToSen(
+            units(
+              invoiceViews.reduce(
+                (sum, i) => sum + (i?.status === "Advanced" && i.advance ? i.advance : 0n),
+                0n,
+              ),
+            ),
+            "nearest",
+          ),
+          poolCashSen: unitsToSen(pool.cash, "nearest"),
+        }
+      : null,
     invoices,
     keys: [...agentKeysFor(ownerKeys), ...agentKeysFor(agentKeys)],
     activity: getActivityLog()

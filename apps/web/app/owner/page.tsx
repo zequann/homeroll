@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Money } from "@/components/Money";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { Segmented } from "@/components/Segmented";
 import { getFixtures } from "@/lib/near";
@@ -75,6 +76,22 @@ export default async function OwnerPage({
           </div>
 
           {tab === "pay-lines" ? <PayLines rows={view.payLines} connected={connected} /> : null}
+          {tab === "invoices" && view.figures ? (
+            <dl className={styles.stats}>
+              <div>
+                <dt className="t-caption ink-3">Advanced against invoices</dt>
+                <dd>
+                  <Money value={view.figures.advancedSen} decimals={2} />
+                </dd>
+              </div>
+              <div>
+                <dt className="t-caption ink-3">Lender pool available</dt>
+                <dd>
+                  <Money value={view.figures.poolCashSen} decimals={2} />
+                </dd>
+              </div>
+            </dl>
+          ) : null}
           {tab === "invoices" ? <Invoices rows={view.invoices} connected={connected} /> : null}
           {tab === "workers" ? (
             <Workers rows={view.payees} connected={connected} onboarding={view.onboarding} />

@@ -68,7 +68,7 @@ describe("the three demo moments on the fake chain", () => {
       if (!next.ok) break;
       calls += 1;
     }
-    // max_lines_per_call is 36 (SPEC §7.3): a 40-line run takes two pay_run calls.
+    // max_lines_per_call is 20 (SPEC §7.3): a 40-line run takes two pay_run calls.
     expect(calls).toBe(2);
     const runs = await chain.getRuns(employer, OCT);
     expect(runs?.[0]?.lines.filter((l) => l.status === "Paid")).toHaveLength(40);
@@ -100,12 +100,12 @@ describe("the three demo moments on the fake chain", () => {
       {
         workerName: hafiz?.displayName,
         possessive: hafiz?.possessive,
-        amountSen: sen(1_924_000),
+        amountSen: sen(1_117_000),
         capSen: sen(290_000),
       },
     );
     expect(sentence).toBe(
-      "Line 5, Hafiz Rahman: above wage cap. RM19,240 is more than his RM2,900 cap. Nothing was reserved or paid. Check the timesheet, then run payroll again.",
+      "Line 5, Hafiz Rahman: above wage cap. RM11,170 is more than his RM2,900 cap. Nothing was reserved or paid. Check the timesheet, then run payroll again.",
     );
     expect((await chain.getEmployer(employer))?.treasury).toBe(treasuryBefore);
     expect(await chain.getRuns(employer, OCT)).toEqual([]);

@@ -15,6 +15,7 @@ export function AttackCard({
   title,
   story,
   badge,
+  download,
 }: {
   id: AttackId;
   title: string;
@@ -22,6 +23,8 @@ export function AttackCard({
   story: string;
   /** What this attack's agent runs on, when it is mocked ("Mock model"). */
   badge?: string;
+  /** A document this attack uses. */
+  download?: { href: string; label: string };
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<AttackResult | null>(null);
@@ -53,6 +56,11 @@ export function AttackCard({
         </Button>
       </div>
       <blockquote className={styles.story}>{story}</blockquote>
+      {download ? (
+        <a className="t-caption" href={download.href}>
+          {download.label}
+        </a>
+      ) : null}
 
       {error ? (
         <p className="t-caption" role="alert">

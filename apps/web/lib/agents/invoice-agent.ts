@@ -1,6 +1,7 @@
-import type { Fixtures, Invoice } from "@homeroll/fixtures";
+import { type Fixtures, type Invoice, invoiceInput } from "@homeroll/fixtures";
 import { homerollAccounts } from "@homeroll/shared";
 import { buyerHash, invoiceHash, renderInvoiceText } from "@homeroll/shared/invoice";
+import { extractInvoiceText, renderInvoicePdf } from "@homeroll/shared/invoice-pdf";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { feeSen, type Sen, sen, senToUnits } from "@/lib/fx";
 import type { ChainClient, Grade } from "@/lib/near/client";
@@ -55,21 +56,25 @@ export interface InvoiceAgentResult {
 
 /** The synthetic document for a fixture invoice, as its text layer reads (SPEC §9.6 template). */
 export function invoiceDocument(f: Fixtures, inv: Invoice, opts?: { tampered?: boolean }): string {
-  return renderInvoiceText(
-    {
-      sellerName: f.company.name,
-      sellerTin: f.company.sellerTin,
-      buyerName: inv.buyer,
-      buyerTin: inv.buyerTin,
-      invoiceNo: inv.number,
-      issueDate: inv.issued,
-      dueDate: inv.due,
-      amountSen: inv.amountSen,
-      poNumber: inv.poNumber,
-      myinvoisUuid: inv.myinvoisUuid,
-    },
-    opts,
-  );
+  return renderInvoiceText(invoiceInput(f, inv), opts);
+}
+
+/** The same document as the PDF the owner sees. */
+export function invoicePdf(
+  f: Fixtures,
+  inv: Invoice,
+  opts?: { tampered?: boolean },
+): Promise<Uint8Array> {
+  return renderInvoicePdf(invoiceInput(f, inv), opts);
+}
+
+/** What the agent actually reads: the PDF's text layer, so white-on-white text comes through. */
+export async function invoiceDocumentFromPdf(
+  f: Fixtures,
+  inv: Invoice,
+  opts?: { tampered?: boolean },
+): Promise<string> {
+  return extractInvoiceText(await invoicePdf(f, inv, opts));
 }
 
 export function offerFor(amountSen: Sen, grade: Grade): AdvanceOffer | null {
@@ -89,6 +94,13 @@ export function offerFor(amountSen: Sen, grade: Grade): AdvanceOffer | null {
   };
 }
 
+/** The document could not be used at all: nothing was checked or registered. */
+export class InvoiceNotReadable extends Error {
+  constructor(readonly reason: "unreadable" | "unknown-invoice") {
+    super(reason);
+  }
+}
+
 export async function runInvoiceAgent(
   deps: InvoiceAgentDeps,
   documentText: string,
@@ -97,13 +109,15 @@ export async function runInvoiceAgent(
 
   // 1. Extract. The raw output is untrusted: parse strictly, drop unknown fields.
   const raw = await inference.extract(buildExtractionPrompt(documentText));
-  const parsed = modelOutputSchema.parse(raw);
+  const output = modelOutputSchema.safeParse(raw);
+  if (!output.success) throw new InvoiceNotReadable("unreadable");
+  const parsed = output.data;
   const droppedFields =
     raw && typeof raw === "object" ? Object.keys(raw).filter((k) => !(k in parsed)) : [];
 
   // Evidence is looked up by what the document claims, then compared in code.
   const evidence = fixtures.invoices.find((i) => i.number === parsed.invoiceNo);
-  if (!evidence) throw new Error(`No synthetic evidence for ${parsed.invoiceNo}`);
+  if (!evidence) throw new InvoiceNotReadable("unknown-invoice");
   const invoiceKey = invoiceHash({
     sellerTin: parsed.sellerTin,
     buyerTin: parsed.buyerTin,

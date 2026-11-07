@@ -1,6 +1,6 @@
 import { homerollAccounts } from "@homeroll/shared";
 import { invoiceAgentDeps, invoiceResults } from "@/lib/agents";
-import { invoiceDocument, runInvoiceAgent } from "@/lib/agents/invoice-agent";
+import { invoiceDocumentFromPdf, runInvoiceAgent } from "@/lib/agents/invoice-agent";
 import { proposePayroll } from "@/lib/agents/payroll";
 import { demoKey } from "@/lib/demo-keys";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
@@ -116,7 +116,7 @@ async function doubleFinance(): Promise<AttackResult> {
   const deps = invoiceAgentDeps();
   const invoice = deps.fixtures.invoices[0];
   if (!invoice) throw new Error("No fixture invoice");
-  const doc = invoiceDocument(deps.fixtures, invoice);
+  const doc = await invoiceDocumentFromPdf(deps.fixtures, invoice);
   const before = await poolCashSen();
 
   const notes: string[] = [];
@@ -151,9 +151,10 @@ async function hiddenPrompt(): Promise<AttackResult> {
   if (!invoice) throw new Error("No fixture invoice");
   const before = await poolCashSen();
 
+  // The tampered PDF: the hidden white text reaches the model through the PDF's text layer.
   const result = await runInvoiceAgent(
     deps,
-    invoiceDocument(fixtures, invoice, { tampered: true }),
+    await invoiceDocumentFromPdf(fixtures, invoice, { tampered: true }),
   );
   if (result.attest.ok) invoiceResults().set(invoice.number, result);
 
