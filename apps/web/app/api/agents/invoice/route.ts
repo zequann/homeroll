@@ -2,17 +2,13 @@ import { z } from "zod";
 import { invoiceAgentDeps, rememberInvoiceResult } from "@/lib/agents";
 import { invoiceDocumentFromPdf, runInvoiceAgent } from "@/lib/agents/invoice-agent";
 import { checkUploadedInvoice } from "@/lib/agents/upload";
-import { requireSigner } from "@/lib/session";
 
 const bodySchema = z
   .object({ invoiceNumber: z.string().max(40), tampered: z.boolean().optional() })
   .strict();
 
-/** Invoice agent (SPEC §8.1). Needs the owner's demo session: it attests with the agent's key. */
+/** Invoice agent (SPEC §8.1). Runs for the shared demo company: it attests with the agent's key. */
 export async function POST(request: Request): Promise<Response> {
-  const session = await requireSigner("owner");
-  if (!session.connected) return Response.json({ reason: "not_connected" }, { status: 401 });
-
   // Multipart = an uploaded PDF (curl -F file=@invoice.pdf). JSON = one of the company's own.
   if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
     return uploaded(request);

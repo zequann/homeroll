@@ -1,4 +1,4 @@
-/* ---- The owner console: one centred panel ---- */
+/* ---- The owner page: one centred panel ---- */
 .console {
   width: min(900px, 100%);
   margin: var(--s-5) auto 0;
@@ -9,13 +9,6 @@
   border-radius: var(--r-panel);
   background: var(--surface);
   box-shadow: var(--shadow-panel);
-}
-.headerRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-3);
-  margin-bottom: var(--s-5);
 }
 
 @media (max-width: 759px) {

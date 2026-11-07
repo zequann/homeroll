@@ -1,8 +1,5 @@
 import { CaretLeft } from "@phosphor-icons/react/ssr";
-import { redirect } from "next/navigation";
 import { ButtonLink } from "@/components/Button";
-import { guardPage } from "@/lib/page-access";
-import { readSession } from "@/lib/session";
 import { loadRahimView } from "@/lib/views/rahim";
 import { CashOut } from "../_components/CashOut";
 import styles from "../_components/worker.module.css";
@@ -10,9 +7,7 @@ import styles from "../_components/worker.module.css";
 export const metadata = { title: "Cash out · Homeroll" };
 
 export default async function CashOutPage() {
-  await guardPage("/worker/cashout");
-  const [rahim, session] = await Promise.all([loadRahimView(), readSession()]);
-  if (session?.key !== "worker:w-7k2q9x") redirect("/worker");
+  const rahim = await loadRahimView();
 
   return (
     <main className="page">

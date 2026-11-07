@@ -4,7 +4,6 @@ import { PaperPlaneTilt } from "@phosphor-icons/react";
 import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, formatTaka, parseRm, type Sen } from "@/lib/fx";
 import { BENCHMARKS, benchmarkTaka, type RemitQuote, SampleQuote } from "@/lib/remit";
 import { priceSwap, sendHome } from "../actions";
@@ -14,12 +13,10 @@ const pct = (bps: number) => `${Math.floor(bps / 100)}.${String(bps % 100).padSt
 
 export function SendHome({
   balanceSen,
-  connected,
   recipient,
   liveQuotes,
 }: {
   balanceSen: Sen;
-  connected: boolean;
   recipient: { label: string; wallet: string; city: string };
   /** The server asks NEAR Intents for a dry-run quote as the amount changes. */
   liveQuotes: boolean;
@@ -56,7 +53,7 @@ export function SendHome({
       : tooMuch
         ? `You have ${formatRm(balanceSen, { decimals: 2 })}.`
         : null;
-  const canSend = connected && quote !== null && !tooMuch && hasBalance;
+  const canSend = quote !== null && !tooMuch && hasBalance;
 
   const rows = [
     { who: "Homeroll", bps: quote?.totalBps ?? 110, taka: quote?.takaOut ?? null, sample: true },
@@ -127,34 +124,28 @@ export function SendHome({
         </p>
       ) : null}
 
-      {connected ? (
-        <Button
-          fullWidth
-          icon={<PaperPlaneTilt size={20} />}
-          disabled={!canSend}
-          pending={pending}
-          pendingLabel="Sending…"
-          onClick={() =>
-            amount &&
-            start(async () => {
-              const result = await sendHome(amount);
-              if (result && !result.ok) {
-                setError(
-                  result.reason === "too-much"
-                    ? "That is more than your balance."
-                    : result.reason === "relayer"
-                      ? `Not sent. ${result.message} Nothing left your account.`
-                      : "Connect Rahim's wallet to send.",
-                );
-              }
-            })
-          }
-        >
-          Send home
-        </Button>
-      ) : (
-        <ConnectButton account="worker:w-7k2q9x" fullWidth />
-      )}
+      <Button
+        fullWidth
+        icon={<PaperPlaneTilt size={20} />}
+        disabled={!canSend}
+        pending={pending}
+        pendingLabel="Sending…"
+        onClick={() =>
+          amount &&
+          start(async () => {
+            const result = await sendHome(amount);
+            if (result && !result.ok) {
+              setError(
+                result.reason === "too-much"
+                  ? "That is more than your balance."
+                  : `Not sent. ${result.message} Nothing left your account.`,
+              );
+            }
+          })
+        }
+      >
+        Send home
+      </Button>
     </div>
   );
 }

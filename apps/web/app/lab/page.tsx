@@ -1,23 +1,17 @@
-import { ResetDemoButton } from "@/components/ResetDemoButton";
-import { guardPage } from "@/lib/page-access";
 import { AttackCard } from "./_components/AttackCard";
 import styles from "./_components/lab.module.css";
 
 export const metadata = { title: "Attack lab · Homeroll" };
 
-export default async function LabPage() {
-  await guardPage("/lab");
+export default function LabPage() {
   return (
     <main className="page">
       <div className={styles.stack}>
         <div className={styles.header}>
-          <div>
-            <h1 className="t-title">Attack lab</h1>
-            <p className="t-caption ink-3">
-              Each attack fools the agent on purpose. The money stays put.
-            </p>
-          </div>
-          <ResetDemoButton />
+          <h1 className="t-title">Attack lab</h1>
+          <p className="t-caption ink-3">
+            Each attack fools the agent on purpose. The money stays put.
+          </p>
         </div>
 
         <AttackCard

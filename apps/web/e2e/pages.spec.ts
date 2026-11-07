@@ -1,17 +1,8 @@
 import { expect, test } from "@playwright/test";
-import {
-  axeViolations,
-  connect,
-  LENDER,
-  OWNER,
-  RAHIM,
-  resetDemo,
-  settled,
-  withoutErrors,
-} from "./helpers";
+import { axeViolations, resetDemo, withoutErrors } from "./helpers";
 
-// Every page a visitor can open, before and after connecting. The done pages need a real
-// receipt, so demo.spec.ts checks them inside the flow.
+// Every page a visitor can open. There is no wallet step: each page signs as its own shared demo
+// account. The done pages need a real receipt, so demo.spec.ts checks them inside the flow.
 const PAGES = [
   "/",
   "/owner",
@@ -48,18 +39,6 @@ for (const path of PAGES) {
   });
 }
 
-test("the owner console passes the same checks once connected, on every tab", async ({ page }) => {
-  await page.goto("/owner");
-  await connect(page, OWNER);
-  for (const tab of ["pay-lines", "invoices", "workers", "agent-keys", "activity"]) {
-    await withoutErrors(page, async () => {
-      await page.goto(`/owner?tab=${tab}`);
-      await expect(page.getByRole("main")).toBeVisible();
-    });
-    expect(await axeViolations(page), tab).toEqual([]);
-  }
-});
-
 test("the toolbar reaches every page", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Pages" });
@@ -75,67 +54,21 @@ test("the toolbar reaches every page", async ({ page }) => {
   }
   await page.getByRole("link", { name: "Homeroll" }).click();
   await expect(page).toHaveURL("/");
-  for (const label of ["Owner console", "Worker app", "Attack lab", "Lender"]) {
-    await expect(
-      page.getByRole("navigation", { name: "Surfaces" }).getByRole("link", { name: label }),
-    ).toBeVisible();
-  }
+  await page.getByRole("link", { name: "Start the demo" }).click();
+  await expect(page).toHaveURL("/owner");
 });
 
-test("each wallet sees only its own pages, and switching wallet takes you there", async ({
+test("no page asks for a wallet or a sign-in, and Reset demo is in the toolbar once", async ({
   page,
 }) => {
-  const links = page.getByRole("navigation", { name: "Pages" }).getByRole("link");
-  await page.goto("/lender");
-  await expect(links).toHaveText(["Owner", "Worker", "Lab", "Lender"]);
-
-  await connect(page, LENDER);
-  await expect(links).toHaveText(["Lender"]);
-  await page.goto("/owner");
-  await expect(page).toHaveURL("/lender");
-
-  await connect(page, OWNER);
-  await expect(page).toHaveURL("/owner");
-  await expect(links).toHaveText(["Owner", "Lab"]);
-  await page.goto("/lab");
-  await expect(page).toHaveURL("/lab");
-  await page.goto("/worker/send");
-  await expect(page).toHaveURL("/owner");
-
-  await connect(page, RAHIM);
-  await expect(page).toHaveURL("/worker");
-  await expect(links).toHaveText(["Worker"]);
-  await page.goto("/lender");
-  await expect(page).toHaveURL("/worker");
-  // The owner console no longer carries Rahim's phone
-  await connect(page, OWNER);
-  await expect(page.getByRole("complementary", { name: "Rahim's phone" })).toHaveCount(0);
-});
-
-test("the wallet sheet opens, closes, connects and disconnects", async ({ page }) => {
-  await page.goto("/lab");
-  const wallet = page.locator('header button[aria-haspopup="dialog"]');
-  await wallet.click();
-  const sheet = page.getByRole("dialog", { name: "Connect wallet" });
-  await expect(sheet).toBeVisible();
-  await settled(sheet);
-  expect(await axeViolations(page)).toEqual([]);
-  await sheet.getByRole("button", { name: "Close" }).click();
-  await expect(sheet).toBeHidden();
-
-  // Opened from a page's own Connect wallet button, the sheet highlights that account
-  await page.goto("/owner");
-  await page.getByRole("main").getByRole("button", { name: "Connect wallet" }).first().click();
-  await expect(sheet).toBeVisible();
-  await settled(sheet);
-  expect(await axeViolations(page), "sheet with a highlighted account").toEqual([]);
-  await sheet.getByRole("button", { name: "Close" }).click();
-
-  await connect(page, OWNER);
-  await expect(wallet).toContainText("Perabot Jaya");
-  await wallet.click();
-  await sheet.getByRole("button", { name: "Disconnect" }).click();
-  await expect(wallet).toHaveText(/Connect wallet/);
+  for (const path of PAGES) {
+    await page.goto(path);
+    await expect(page.getByText(/Connect wallet|Sign in/)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reset demo" })).toHaveCount(1);
+    await expect(
+      page.getByRole("banner").getByRole("button", { name: "Reset demo" }),
+    ).toBeVisible();
+  }
 });
 
 test.describe("on a phone", () => {

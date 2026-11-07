@@ -37,11 +37,12 @@ function StatusCell({ status }: { status: PayLineStatus }) {
 export function PayLines({
   rows,
   caption = true,
-  connected = false,
+  actions = true,
 }: {
   rows: PayLineRow[];
   caption?: boolean;
-  connected?: boolean;
+  /** Row buttons such as Pay missed worker. Off for the landing page's still picture. */
+  actions?: boolean;
 }) {
   return (
     <div>
@@ -79,9 +80,7 @@ export function PayLines({
                 </td>
                 <td>
                   <StatusCell status={row.status} />
-                  {row.missed ? (
-                    <PayMissed accountId={row.accountId} connected={connected} />
-                  ) : null}
+                  {actions && row.missed ? <PayMissed accountId={row.accountId} /> : null}
                 </td>
               </tr>
             ))}

@@ -1,5 +1,5 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { axeViolations, connect, OWNER, resetDemo, signInWorker, withoutErrors } from "./helpers";
+import { axeViolations, resetDemo, withoutErrors } from "./helpers";
 
 // SPEC §14 E2E: invoice → advance → payroll → send home → settle, then Reset demo and the
 // same path again. One page for the whole file, because the steps build on each other.
@@ -28,8 +28,8 @@ const ownerTab = async (name: string) => {
 async function happyPath() {
   await withoutErrors(page, async () => {
     // Start: RM18,400 against RM78,000 of wages
+    // No wallet step: the owner page signs as the shared demo employer
     await page.goto("/owner");
-    await connect(page, OWNER);
     await expect(page.getByText(/Short by RM64,600\.00\./)).toBeVisible();
 
     // The Grade C invoice alone still leaves payroll short (a demo moment)
@@ -59,10 +59,12 @@ async function happyPath() {
     await expect(
       payout.getByText("Simulated. In production this settles on NEAR's private shard."),
     ).toHaveCount(2);
-    await payout.getByRole("button", { name: "Production" }).click();
-    await expect(payout).toContainText("Nothing.");
-    await payout.getByRole("button", { name: "This demo" }).click();
-    await expect(payout).toContainText("pay_run: payroll → each worker");
+    // This demo against production, in one disclosure
+    await payout.getByText("What an outsider sees").click();
+    await expect(payout.getByRole("row", { name: /Payday/ })).toContainText(
+      "pay_run: payroll → each worker",
+    );
+    await expect(payout.getByRole("row", { name: /Payday/ })).toContainText("Nothing.");
 
     await ownerTab("Pay lines");
     await expect(page.getByRole("row", { name: /Rahim Uddin/ })).toContainText("Paid");
@@ -86,7 +88,8 @@ async function happyPath() {
     await expect(page.getByRole("main")).toContainText("submit_run");
 
     // Rahim's phone shows his wage
-    await signInWorker(page);
+    // Rahim's phone needs no sign-in: the worker page signs as his demo account
+    await page.goto("/worker");
     await expect(page.getByText("RM1,950.00").first()).toBeAttached();
 
     // Send home RM800 through the relayer to the mock partner
@@ -112,9 +115,6 @@ async function happyPath() {
     await expect(page).toHaveURL("/worker");
 
     // The buyer pays: the pool is repaid, the rest reaches the treasury
-    // Switching to the owner's wallet takes the browser to the owner console
-    await connect(page, OWNER);
-    await expect(page).toHaveURL(/\/owner/);
     await page.goto("/owner?tab=invoices");
     await invoice("INV-2026-1043").getByRole("button", { name: "Buyer paid" }).click();
     await expect(invoice("INV-2026-1043")).toContainText(

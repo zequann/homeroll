@@ -1,11 +1,8 @@
-import { PlaceholderRow } from "@/components/PlaceholderRow";
 import { depositAssets, sharesValue } from "@/lib/deposit";
 import { getEnv } from "@/lib/env";
 import { formatUsdc, units } from "@/lib/fx";
 import { listTokens } from "@/lib/intents";
 import { getChainClient, getFixtures } from "@/lib/near";
-import { guardPage } from "@/lib/page-access";
-import { readSession } from "@/lib/session";
 import { PrivateDeposit } from "./_components/PrivateDeposit";
 import styles from "./lender.module.css";
 
@@ -15,14 +12,12 @@ const pct = (bps: bigint) => `${bps / 100n}.${String(bps % 100n).padStart(2, "0"
 
 /** Pool numbers in USDC. USDC is the only currency on this page, with no RM hint. */
 export default async function LenderPage() {
-  await guardPage("/lender");
   const chain = getChainClient();
   const { lender } = getFixtures();
   const live = getEnv().intentsQuotes === "live";
-  const [pool, position, session, tokens] = await Promise.all([
+  const [pool, position, tokens] = await Promise.all([
     chain.getPool(),
     chain.getLender(lender.accountId),
-    readSession(),
     live ? listTokens() : Promise.resolve(null),
   ]);
   const total = units(pool.cash + pool.outstanding);
@@ -79,19 +74,7 @@ export default async function LenderPage() {
           <p id="deposit-label" className="t-caption ink-3">
             Private deposit from any chain
           </p>
-          <PrivateDeposit
-            assets={assets}
-            connected={session?.key === "lender"}
-            network={chain.network}
-          />
-        </section>
-
-        <section className={`${styles.card} ${styles.quiet}`} aria-label="Not in this build">
-          <PlaceholderRow
-            name="Deposit tUSDC on NEAR"
-            caption="Not in this build (SPEC §9.4, P1)."
-          />
-          <PlaceholderRow name="Rhea Lend rate" caption="Not in this build (SPEC §9.4, P1)." />
+          <PrivateDeposit assets={assets} network={chain.network} />
         </section>
       </div>
     </main>

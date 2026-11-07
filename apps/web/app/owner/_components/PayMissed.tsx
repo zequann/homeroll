@@ -7,10 +7,9 @@ import type { FailureView } from "@/lib/describe-failure";
 import { payMissed } from "../actions";
 
 /** Pay missed worker: a one-line run for the same period (SPEC §9.1). */
-export function PayMissed({ accountId, connected }: { accountId: string; connected: boolean }) {
+export function PayMissed({ accountId }: { accountId: string }) {
   const [pending, start] = useTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
-  if (!connected) return null;
   return (
     <div>
       <Button

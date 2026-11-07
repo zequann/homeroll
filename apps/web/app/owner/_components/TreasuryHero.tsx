@@ -7,7 +7,6 @@ import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
-import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, type Sen } from "@/lib/fx";
 import {
   approvePayout,
@@ -34,10 +33,10 @@ export interface TreasuryHeroProps {
   bufferSen: Sen;
   periodLabel: string;
   facts: RunFacts;
-  /** The owner demo account is connected, so the page can sign. */
-  connected: boolean;
   /** Testnet only. Mints tUSDC into this company's treasury. */
   canFund: boolean;
+  /** On the Invoices tab the row's own Take advance is right there, so the shortcut hides. */
+  showAdvanceShortcut?: boolean;
 }
 
 export function TreasuryHero(props: TreasuryHeroProps) {
@@ -48,8 +47,8 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     bufferSen,
     periodLabel,
     facts,
-    connected,
     canFund,
+    showAdvanceShortcut = true,
   } = props;
   const [fundNote, setFundNote] = useState<string | null>(null);
   const router = useRouter();
@@ -62,15 +61,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     setLocal({ checking: false, approving: true, rejection: null, paying: null });
     const approved = await approvePayout(runId);
     if (approved.ok) return approved.approval;
-    const failure =
-      approved.reason === "rejected"
-        ? approved.failure
-        : {
-            sentence: "Connect the owner wallet to pay.",
-            code: "NOT_CONNECTED",
-            ruleCaption: null,
-          };
-    setLocal({ ...IDLE, rejection: { failure, atTreasury: treasurySen } });
+    setLocal({ ...IDLE, rejection: { failure: approved.failure, atTreasury: treasurySen } });
     return null;
   }
 
@@ -86,15 +77,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     for (;;) {
       const batch = await payNextBatch(runId, approval, button);
       if (!batch.ok) {
-        const failure =
-          batch.reason === "rejected"
-            ? batch.failure
-            : {
-                sentence: "Connect the owner wallet to pay.",
-                code: "NOT_CONNECTED",
-                ruleCaption: null,
-              };
-        setLocal({ ...IDLE, rejection: { failure, atTreasury: treasurySen } });
+        setLocal({ ...IDLE, rejection: { failure: batch.failure, atTreasury: treasurySen } });
         return;
       }
       setLocal({
@@ -119,10 +102,6 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     start(async () => {
       const submitted = await submitPayroll("Run payroll");
       if (!submitted.ok) {
-        if (submitted.reason === "not-connected") {
-          setLocal(IDLE);
-          return;
-        }
         setLocal({
           ...IDLE,
           rejection: {
@@ -143,7 +122,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     start(async () => {
       const submitted = await submitPayroll("Reserve only");
       setLocal(
-        submitted.ok || submitted.reason === "not-connected"
+        submitted.ok
           ? IDLE
           : {
               ...IDLE,
@@ -161,14 +140,13 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     start(async () => {
       const result = await cancelPayroll(runId);
       setLocal(
-        result.ok || result.reason === "not-connected"
+        result.ok
           ? IDLE
           : { ...IDLE, rejection: { failure: result.failure, atTreasury: treasurySen } },
       );
     });
 
-  const canAct = state.kind !== "done" && state.kind !== "nothingToRun";
-  const canReserve = connected && state.kind === "ready" && !pending;
+  const canReserve = state.kind === "ready" && !pending;
 
   return (
     <div className={styles.hero}>
@@ -184,24 +162,20 @@ export function TreasuryHero(props: TreasuryHeroProps) {
         <StatusLine state={state} facts={facts} bufferSen={bufferSen} />
 
         <div className={styles.heroActions}>
-          {canAct && !connected ? (
-            <ConnectButton account="owner" />
-          ) : (
-            <Button variant="primary" disabled={!buttonEnabled(state, pending)} onClick={run}>
-              {buttonLabel(state)}
-            </Button>
-          )}
+          <Button variant="primary" disabled={!buttonEnabled(state, pending)} onClick={run}>
+            {buttonLabel(state)}
+          </Button>
           {canReserve ? (
             <Button variant="plain" onClick={reserveOnly}>
               Reserve only
             </Button>
           ) : null}
-          {state.kind === "paying" && !state.inFlight && connected ? (
+          {state.kind === "paying" && !state.inFlight ? (
             <Button variant="plain" disabled={pending} onClick={() => cancel(state.runId)}>
               Cancel run
             </Button>
           ) : null}
-          {state.kind === "short" && connected ? (
+          {state.kind === "short" && showAdvanceShortcut ? (
             <Button
               variant="tinted"
               onClick={() => router.replace("/owner?tab=invoices", { scroll: false })}
@@ -209,7 +183,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               Take advance
             </Button>
           ) : null}
-          {canFund && connected ? (
+          {canFund ? (
             <Button
               variant="tinted"
               disabled={pending}
@@ -218,8 +192,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
                   setFundNote(null);
                   const result = await fundTreasury();
                   if (result.ok) setFundNote("Added RM20,000.00 of testnet tUSDC.");
-                  else if (result.reason === "rejected") setFundNote(result.failure.sentence);
-                  else setFundNote("Connect the owner first.");
+                  else setFundNote(result.failure.sentence);
                   router.refresh();
                 })
               }

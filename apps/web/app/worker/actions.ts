@@ -12,11 +12,11 @@ import { quoteSwapLeg } from "@/lib/intents";
 import { getMockLedger } from "@/lib/mock/ledger";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { MockRoute, quoteWithSwap, type RemitQuote, SampleQuote } from "@/lib/remit";
-import { requireSigner } from "@/lib/session";
+import { demoSigner } from "@/lib/session";
 import { workerTransfer } from "@/lib/worker-transfer";
 
 export type SendResult =
-  | { ok: false; reason: "not-connected" | "too-much" }
+  | { ok: false; reason: "too-much" }
   /** The relayer refused to pay for it (SPEC §8.3); `message` is the rule in plain words. */
   | { ok: false; reason: "relayer"; rule: string; message: string };
 
@@ -63,20 +63,17 @@ export async function priceSwap(amountSen: unknown): Promise<RemitQuote> {
 export async function sendHome(amountSen: unknown): Promise<SendResult> {
   labelAction("Send home");
   const amount = sen(amountSchema.parse(amountSen));
-  const session = await requireSigner("worker");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("worker");
 
-  const balance = await getChainClient().ftBalanceOf(session.signer.accountId);
+  const balance = await getChainClient().ftBalanceOf(signer.accountId);
   if (senToUnits(amount) > balance) return { ok: false, reason: "too-much" };
 
   const { payout } = homerollAccounts(getEnv().root);
-  const family = getFixtures().workers.find(
-    (w) => w.accountId === session.signer.accountId,
-  )?.family;
+  const family = getFixtures().workers.find((w) => w.accountId === signer.accountId)?.family;
   let ref: string;
   try {
     ({ ref } = await MockRoute.execute(
-      transferAs(session.signer.accountId),
+      transferAs(signer.accountId),
       payout,
       await priceSendHome(amount),
       getMockLedger(),
@@ -99,17 +96,16 @@ export async function cashOut(amountSen: unknown, destination: unknown): Promise
   labelAction("Cash out");
   const amount = sen(amountSchema.parse(amountSen));
   const dest = z.enum(["tng", "bank"]).parse(destination) satisfies CashoutDestination;
-  const session = await requireSigner("worker");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("worker");
 
-  const balance = await getChainClient().ftBalanceOf(session.signer.accountId);
+  const balance = await getChainClient().ftBalanceOf(signer.accountId);
   if (senToUnits(amount) > balance) return { ok: false, reason: "too-much" };
 
   const { offramp } = homerollAccounts(getEnv().root);
   let ref: string;
   try {
     ({ ref } = await mockDuitNow(getMockLedger()).execute(
-      transferAs(session.signer.accountId),
+      transferAs(signer.accountId),
       offramp,
       amount,
       dest,

@@ -1,11 +1,8 @@
 import { z } from "zod";
 import { Money } from "@/components/Money";
-import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { Segmented } from "@/components/Segmented";
 import { getFixtures } from "@/lib/near";
-import { guardPage } from "@/lib/page-access";
 import { loadPayoutPanel } from "@/lib/payout/server";
-import { readSession } from "@/lib/session";
 import { loadOwnerView } from "@/lib/views/owner";
 import { Activity } from "./_components/Activity";
 import { AgentKeys } from "./_components/AgentKeys";
@@ -16,7 +13,7 @@ import { PayLines } from "./_components/PayLines";
 import { TreasuryHero } from "./_components/TreasuryHero";
 import { Workers } from "./_components/Workers";
 
-export const metadata = { title: "Owner console · Homeroll" };
+export const metadata = { title: "Owner · Homeroll" };
 
 const TABS = [
   { key: "pay-lines", label: "Pay lines" },
@@ -34,25 +31,20 @@ export default async function OwnerPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await guardPage("/owner");
   const tab = tabSchema.parse((await searchParams).tab);
-  const [view, session, payout] = await Promise.all([
+  const [view, payout] = await Promise.all([
     loadOwnerView(tab),
-    readSession(),
     loadPayoutPanel(getFixtures().company.accountId),
   ]);
-  const connected = session?.role === "Owner";
 
   return (
     <main className="page">
       <div className={styles.console}>
         <section className={styles.panel} aria-labelledby="owner-title">
-          <div className={styles.headerRow}>
-            <h1 id="owner-title" className="t-title">
-              Owner console
-            </h1>
-            <ResetDemoButton />
-          </div>
+          {/* The toolbar already says where you are: the heading is for screen readers */}
+          <h1 id="owner-title" className="sr-only">
+            Owner
+          </h1>
 
           <TreasuryHero
             companyName={view.companyName}
@@ -61,8 +53,8 @@ export default async function OwnerPage({
             bufferSen={view.bufferSen}
             periodLabel={view.periodLabel}
             facts={view.facts}
-            connected={connected}
             canFund={view.mode === "testnet"}
+            showAdvanceShortcut={tab !== "invoices"}
           />
 
           <ConfidentialPayout payout={payout} network={view.mode} />
@@ -75,7 +67,7 @@ export default async function OwnerPage({
             />
           </div>
 
-          {tab === "pay-lines" ? <PayLines rows={view.payLines} connected={connected} /> : null}
+          {tab === "pay-lines" ? <PayLines rows={view.payLines} /> : null}
           {tab === "invoices" && view.figures ? (
             <dl className={styles.stats}>
               <div>
@@ -92,10 +84,8 @@ export default async function OwnerPage({
               </div>
             </dl>
           ) : null}
-          {tab === "invoices" ? <Invoices rows={view.invoices} connected={connected} /> : null}
-          {tab === "workers" ? (
-            <Workers rows={view.payees} connected={connected} onboarding={view.onboarding} />
-          ) : null}
+          {tab === "invoices" ? <Invoices rows={view.invoices} /> : null}
+          {tab === "workers" ? <Workers rows={view.payees} onboarding={view.onboarding} /> : null}
           {tab === "agent-keys" ? <AgentKeys keys={view.keys} mode={view.mode} /> : null}
           {tab === "activity" ? <Activity rows={view.activity} /> : null}
         </section>

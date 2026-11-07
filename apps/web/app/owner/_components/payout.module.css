@@ -36,39 +36,36 @@
 .hashes a {
   color: var(--accent);
 }
-.toggle {
-  display: inline-flex;
-  align-self: flex-start;
-  margin: 0;
-  border: 0;
-  padding: 2px;
-  border-radius: var(--r-card);
-  background: var(--ground);
-}
-.toggle button {
-  padding: var(--s-1) var(--s-3);
-  border: 0;
-  border-radius: var(--r-card);
-  background: transparent;
-  font: inherit;
+.seen summary {
   cursor: pointer;
+  color: var(--ink-2);
 }
-.toggle button[aria-pressed="true"] {
-  background: var(--surface);
-  box-shadow: var(--shadow-panel);
+.seen[open] summary {
+  margin-bottom: var(--s-2);
+}
+.seenTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.seenTable th,
+.seenTable td {
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  text-align: left;
+  vertical-align: top;
+  border-top: 0.5px solid var(--ink-4);
+}
+.seenTable thead th {
+  border-top: 0;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.seenTable tbody th {
   font-weight: 600;
-}
-.views {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--s-3);
-  margin: 0;
-}
-.views dd {
-  margin: 2px 0 0;
+  white-space: nowrap;
 }
 @media (max-width: 559px) {
-  .views {
-    grid-template-columns: 1fr;
+  .seenTable tbody th {
+    white-space: normal;
   }
 }

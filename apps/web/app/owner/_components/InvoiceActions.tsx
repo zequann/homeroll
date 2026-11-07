@@ -3,7 +3,6 @@
 import { useTransition } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { ConnectButton } from "@/components/WalletButton";
 import { buyerPaid, checkInvoice } from "../actions";
 
 const column = {
@@ -14,9 +13,8 @@ const column = {
 } as const;
 
 /** Owner "uploads" the invoice; the agent checks, grades and registers it (SPEC §8.1). */
-export function CheckInvoice({ number, connected }: { number: string; connected: boolean }) {
+export function CheckInvoice({ number }: { number: string }) {
   const [pending, start] = useTransition();
-  if (!connected) return <ConnectButton account="owner" variant="tinted" size="small" />;
   return (
     <Button
       variant="tinted"
@@ -35,9 +33,8 @@ export function CheckInvoice({ number, connected }: { number: string; connected:
 }
 
 /** The buyer pays into the mock bank's escrow, which settles the invoice on the pool. */
-export function BuyerPaid({ number, connected }: { number: string; connected: boolean }) {
+export function BuyerPaid({ number }: { number: string }) {
   const [pending, start] = useTransition();
-  if (!connected) return <ConnectButton account="owner" variant="tinted" size="small" />;
   return (
     <div style={column}>
       <Button
