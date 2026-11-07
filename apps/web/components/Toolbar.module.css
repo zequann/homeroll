@@ -51,43 +51,27 @@
   font-weight: 600;
 }
 
-.pillWrap {
-  position: relative;
-  display: inline-flex;
-}
-.pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 var(--s-3);
-  border-radius: 12px;
-  background: var(--ink-5);
-  color: var(--ink-2);
+.mode {
   white-space: nowrap;
-}
-.tip {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 260px;
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-control);
-  background: var(--surface);
-  color: var(--ink-2);
-  box-shadow: var(--shadow-satellite);
-  white-space: normal;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out;
-}
-.pill:hover .tip,
-.pill:focus-visible .tip {
-  opacity: 1;
 }
 
 @media (max-width: 639px) {
-  .nav,
-  .pill {
+  .bar {
+    gap: var(--s-2);
+  }
+  .left {
+    gap: var(--s-3);
+  }
+  .nav {
+    gap: var(--s-3);
+  }
+  .mode {
+    display: none;
+  }
+}
+@media (max-width: 420px) {
+  /* The nav is how a phone visitor moves between pages, so the wordmark gives way first */
+  .wordmark {
     display: none;
   }
 }

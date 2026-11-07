@@ -1,5 +1,5 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { connect, OWNER, resetDemo, withoutErrors } from "./helpers";
+import { resetDemo, withoutErrors } from "./helpers";
 
 // Every owner button outside the happy path: reserve, cancel, remove a worker mid-run, finish
 // paying, add back, pay a missed worker, add a payee (SPEC §9.1, README "Try it" step 7).
@@ -13,7 +13,6 @@ test.beforeAll(async ({ browser }) => {
   page = await context.newPage();
   await resetDemo(page);
   await page.goto("/owner");
-  await connect(page, OWNER);
 });
 test.afterAll(async () => {
   await context.close();

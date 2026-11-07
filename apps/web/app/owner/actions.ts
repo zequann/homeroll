@@ -27,23 +27,18 @@ import { approvePayout as approveWithRail, openApproval, sealApproval } from "@/
 import { railFailure } from "@/lib/payout/explain";
 import { approvalSecret, ownerSigns, payoutRail } from "@/lib/payout/server";
 import { toPayLines } from "@/lib/payroll";
-import { requireSigner } from "@/lib/session";
+import { demoSigner } from "@/lib/session";
 
 /** Everything these actions return is plain data: strings and numbers, never bigint. */
 export type SubmitResult =
   | { ok: true; runId: number; lineCount: number }
-  | { ok: false; reason: "not-connected" }
   | { ok: false; reason: "rejected"; failure: FailureView };
 
 export type PayResult =
   | { ok: true; paid: number; total: number; done: boolean; txHash: string }
-  | { ok: false; reason: "not-connected" }
   | { ok: false; reason: "rejected"; failure: FailureView };
 
-export type AdvanceResult =
-  | { ok: true }
-  | { ok: false; reason: "not-connected" }
-  | { ok: false; reason: "rejected"; failure: FailureView };
+export type AdvanceResult = { ok: true } | { ok: false; reason: "rejected"; failure: FailureView };
 
 function refresh() {
   revalidatePath("/owner");
@@ -55,14 +50,13 @@ const payrollButton = z.enum(["Run payroll", "Reserve only", "Finish paying"]);
 /** Owner presses Run payroll: the payroll agent proposes the October run, the contract checks it whole. */
 export async function submitPayroll(button: unknown = "Run payroll"): Promise<SubmitResult> {
   labelAction(payrollButton.parse(button));
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
 
   const chain = getChainClient();
   const fixtures = getFixtures();
   const payrollPeriod = period(fixtures.company.period);
   const { lines } = await proposePayroll(chain, fixtures, payrollPeriod, Date.now());
-  const result = await chain.submitRun(session.signer, payrollPeriod, lines);
+  const result = await chain.submitRun(signer, payrollPeriod, lines);
   refresh();
   if (!result.ok) {
     const failure = await describeFailure(
@@ -80,7 +74,6 @@ export async function submitPayroll(button: unknown = "Run payroll"): Promise<Su
 export type ApproveResult =
   /** `approval` is a sealed token the browser hands to each `payNextBatch` (SPEC §8.11). */
   | { ok: true; intentHash: string; approval: string }
-  | { ok: false; reason: "not-connected" }
   | { ok: false; reason: "rejected"; failure: FailureView };
 
 /**
@@ -89,9 +82,8 @@ export type ApproveResult =
  */
 export async function approvePayout(runId: unknown): Promise<ApproveResult> {
   const id = z.number().int().nonnegative().parse(runId);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
-  const employer = session.signer.accountId;
+  const signer = demoSigner("owner");
+  const employer = signer.accountId;
   const result = await approveWithRail(
     payoutRail(),
     { employer, period: period(getFixtures().company.period), runId: id },
@@ -117,16 +109,15 @@ export async function payNextBatch(
 ): Promise<PayResult> {
   labelAction(payrollButton.parse(button));
   const id = z.number().int().nonnegative().parse(runId);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
 
   const chain = getChainClient();
   const fixtures = getFixtures();
   const approval = openApproval(approvalToken, approvalSecret(), Date.now());
-  if (approval?.runId !== id || approval.employer !== session.signer.accountId) {
+  if (approval?.runId !== id || approval.employer !== signer.accountId) {
     return { ok: false, reason: "rejected", failure: railFailure("not-approved") };
   }
-  const executed = await payoutRail().execute(approval, session.signer);
+  const executed = await payoutRail().execute(approval, signer);
   if (!executed.ok)
     return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
   const result = executed.value;
@@ -147,17 +138,15 @@ export async function payNextBatch(
 
 export type OwnerCallResult =
   | { ok: true }
-  | { ok: false; reason: "not-connected" }
   | { ok: false; reason: "rejected"; failure: FailureView };
 
 /** Cancel run: the owner's key only, the agent's key cannot (SPEC §7.3). */
 export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
   labelAction("Cancel run");
   const id = z.number().int().nonnegative().parse(runId);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
   const chain = getChainClient();
-  const result = await chain.cancelRun(session.signer, id);
+  const result = await chain.cancelRun(signer, id);
   refresh();
   if (result.ok) return { ok: true };
   const failure = await describeFailure(chain, getFixtures().company.accountId, result.failure);
@@ -171,17 +160,16 @@ export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
 export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
   labelAction("Pay missed worker");
   const account = z.string().parse(accountId);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
   const chain = getChainClient();
   const fixtures = getFixtures();
   const lines = toPayLines(fixtures.timesheet.filter((l) => l.accountId === account));
   if (lines.length !== 1) throw new Error("That account has no line on this timesheet");
   const payrollPeriod = period(fixtures.company.period);
-  const submitted = await chain.submitRun(session.signer, payrollPeriod, lines);
+  const submitted = await chain.submitRun(signer, payrollPeriod, lines);
   if (submitted.ok) {
     // The one-line run is paid like any other: the owner's payout intent first (R17)
-    const employer = session.signer.accountId;
+    const employer = signer.accountId;
     const rail = payoutRail();
     const run = { employer, period: payrollPeriod, runId: submitted.value.runId };
     const approved = await approveWithRail(rail, run, ownerSigns(employer));
@@ -189,7 +177,7 @@ export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
       refresh();
       return { ok: false, reason: "rejected", failure: railFailure(approved.refusal) };
     }
-    const executed = await rail.execute(approved.value.approval, session.signer);
+    const executed = await rail.execute(approved.value.approval, signer);
     refresh();
     if (!executed.ok)
       return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
@@ -236,11 +224,10 @@ export async function addPayee(input: unknown): Promise<AddPayeeResult> {
       message: "Enter a made-up name, a role, and a wage cap in RM, like 2600.",
     };
   }
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
   const chain = getChainClient();
   const accountId = newWorkerAccountId(getEnv().root);
-  const result = await chain.addPayee(session.signer, accountId, senToUnits(capSen));
+  const result = await chain.addPayee(signer, accountId, senToUnits(capSen));
   if (!result.ok) {
     const failure = await describeFailure(chain, getFixtures().company.accountId, result.failure);
     return { ok: false, reason: "rejected", failure };
@@ -259,15 +246,14 @@ export async function addPayee(input: unknown): Promise<AddPayeeResult> {
 export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult> {
   labelAction("Add back");
   const account = z.string().parse(accountId);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
   const fixtures = getFixtures();
   const capSen =
     fixtures.workers.find((w) => w.accountId === account)?.capSen ??
     addedWorkers().get(account)?.capSen;
   if (capSen === undefined) throw new Error("Unknown worker");
   const chain = getChainClient();
-  const result = await chain.addPayee(session.signer, account, senToUnits(sen(capSen)));
+  const result = await chain.addPayee(signer, account, senToUnits(sen(capSen)));
   refresh();
   if (result.ok) return { ok: true };
   const failure = await describeFailure(chain, fixtures.company.accountId, result.failure);
@@ -277,19 +263,16 @@ export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult>
 export async function removePayee(accountId: unknown): Promise<OwnerCallResult> {
   labelAction("Remove");
   const account = z.string().parse(accountId);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
   const chain = getChainClient();
-  const result = await chain.removePayee(session.signer, account);
+  const result = await chain.removePayee(signer, account);
   refresh();
   if (result.ok) return { ok: true };
   const failure = await describeFailure(chain, getFixtures().company.accountId, result.failure);
   return { ok: false, reason: "rejected", failure };
 }
 
-export type CheckResult =
-  | { ok: true; result: InvoiceAgentResult }
-  | { ok: false; reason: "not-connected" };
+export type CheckResult = { ok: true; result: InvoiceAgentResult };
 
 /**
  * Owner uploads an invoice: the invoice agent extracts, checks, grades and attests it (SPEC §8.1).
@@ -298,8 +281,6 @@ export type CheckResult =
 export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult> {
   labelAction("Check with agent");
   const invoice = fixtureInvoice(invoiceNumber);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
 
   const deps = invoiceAgentDeps();
   const result = await runInvoiceAgent(deps, await invoiceDocumentFromPdf(deps.fixtures, invoice));
@@ -314,10 +295,6 @@ export async function uploadInvoice(form: FormData): Promise<UploadOutcome> {
   if (!(file instanceof File)) {
     return { ok: false, reason: "not-a-pdf", message: "Choose a PDF invoice to upload." };
   }
-  const session = await requireSigner("owner");
-  if (!session.connected) {
-    return { ok: false, reason: "unreadable", message: "Connect the owner wallet to upload." };
-  }
   const deps = invoiceAgentDeps();
   const outcome = await checkUploadedInvoice(deps, new Uint8Array(await file.arrayBuffer()));
   if (outcome.ok) {
@@ -331,8 +308,7 @@ export async function uploadInvoice(form: FormData): Promise<UploadOutcome> {
 export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult> {
   labelAction("Take advance");
   const invoice = fixtureInvoice(invoiceNumber);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const signer = demoSigner("owner");
 
   const chain = getChainClient();
   const fixtures = getFixtures();
@@ -341,7 +317,7 @@ export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult
   // The owner takes the pool's full offer for the grade the pool holds
   const offer = offerFor(sen(invoice.amountSen), onChain.grade);
   const result = await chain.requestAdvance(
-    session.signer,
+    signer,
     invoice.hash,
     senToUnits(offer?.advanceSen ?? sen(0)),
   );
@@ -355,14 +331,12 @@ export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult
 
 export type BuyerPaidResult =
   | { ok: true; ref: string; ownerGetsSen: number }
-  | { ok: false; reason: "not-connected" | "refunded" };
+  | { ok: false; reason: "refunded" };
 
 /** Mock bank: the buyer pays the invoice in full and escrow settles it on the pool (SPEC §8.6). */
 export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult> {
   labelAction("Buyer paid");
   const invoice = fixtureInvoice(invoiceNumber);
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
   const receipt = await settleWithMockBank(invoice);
   refresh();
   revalidatePath("/lender");
@@ -374,8 +348,6 @@ const FUND_SEN = sen(2_000_000);
 
 /** Adds RM20,000 of testnet tUSDC to this company's payroll treasury. */
 export async function fundTreasury(): Promise<OwnerCallResult> {
-  const session = await requireSigner("owner");
-  if (!session.connected) return { ok: false, reason: "not-connected" };
   if (getEnv().chainClient !== "near") {
     return {
       ok: false,

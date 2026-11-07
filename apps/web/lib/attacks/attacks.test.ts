@@ -5,9 +5,6 @@ import { sen, senToUnits } from "@/lib/fx";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { ATTACK_IDS, runAttack } from "./index";
 
-// lib/session reads cookies at call time; attacks only use its payroll agent signer.
-vi.mock("next/headers", () => ({ cookies: vi.fn() }));
-
 /** October is open on this date (R14), and the fake chain reads Date.now. */
 const NOW = new Date("2026-11-04T12:00:00.000Z");
 

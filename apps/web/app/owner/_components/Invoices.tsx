@@ -8,14 +8,14 @@ import { TakeAdvance } from "./TakeAdvance";
 
 const pct = (bps: number) => `${bps / 100}%`;
 
-export function Invoices({ rows, connected }: { rows: InvoiceRow[]; connected: boolean }) {
+export function Invoices({ rows }: { rows: InvoiceRow[] }) {
   return (
     <div>
       <p className={`t-caption ink-3 ${styles.tableNote}`}>
         The invoice agent reads each document with a mock model, checks it in code and registers it
         on the pool. The pool decides the advance.
       </p>
-      <InvoiceUpload connected={connected} />
+      <InvoiceUpload />
       <ul className={styles.invoiceList}>
         {rows.map((inv) => (
           <li key={inv.number} className={styles.invoiceItem}>
@@ -34,7 +34,7 @@ export function Invoices({ rows, connected }: { rows: InvoiceRow[]; connected: b
                 <Summary row={inv} />
               </div>
               <div className={styles.invoiceAction}>
-                <Action row={inv} connected={connected} />
+                <Action row={inv} />
               </div>
             </div>
             {inv.agent ? <AgentReport result={inv.agent} /> : null}
@@ -104,14 +104,14 @@ function Summary({ row }: { row: InvoiceRow }) {
   );
 }
 
-function Action({ row, connected }: { row: InvoiceRow; connected: boolean }) {
+function Action({ row }: { row: InvoiceRow }) {
   switch (row.status) {
     case "Unchecked":
-      return <CheckInvoice number={row.number} connected={connected} />;
+      return <CheckInvoice number={row.number} />;
     case "Attested":
-      return <TakeAdvance number={row.number} connected={connected} />;
+      return <TakeAdvance number={row.number} />;
     case "Advanced":
-      return <BuyerPaid number={row.number} connected={connected} />;
+      return <BuyerPaid number={row.number} />;
     case "Settled":
       return <span className={styles.ok}>Settled</span>;
     case "Declined":

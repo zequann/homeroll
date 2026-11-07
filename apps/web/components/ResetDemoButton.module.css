@@ -1,0 +1,27 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+}
+/* Below the toolbar, not inside it, so a failed reset never changes the bar's height */
+.error {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-satellite);
+}
+
+@media (max-width: 639px) {
+  /* On a phone the toolbar keeps the icon and the screen reader keeps the name */
+  .compactLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

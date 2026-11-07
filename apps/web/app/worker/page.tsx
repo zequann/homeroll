@@ -1,20 +1,15 @@
 import { Bank, PaperPlaneTilt } from "@phosphor-icons/react/ssr";
 import { ButtonLink } from "@/components/Button";
 import { RollingMoney } from "@/components/RollingMoney";
-import { guardPage } from "@/lib/page-access";
-import { readSession } from "@/lib/session";
 import { loadRahimView } from "@/lib/views/rahim";
 import { ActivityList, type WorkerActivityItem } from "./_components/ActivityList";
 import { RefreshWhileVisible } from "./_components/RefreshWhileVisible";
-import { WorkerSignIn } from "./_components/WorkerSignIn";
 import styles from "./_components/worker.module.css";
 
 export const metadata = { title: "Worker · Homeroll" };
 
 export default async function WorkerPage() {
-  await guardPage("/worker");
-  const [rahim, session] = await Promise.all([loadRahimView(), readSession()]);
-  const connected = session?.key === "worker:w-7k2q9x";
+  const rahim = await loadRahimView();
   const items: WorkerActivityItem[] = [
     ...rahim.sends.map((s) => ({
       id: `send-${s.id}`,
@@ -44,18 +39,14 @@ export default async function WorkerPage() {
             <p className="t-caption ink-3">{rahim.usdcHint}</p>
           </div>
 
-          {connected ? (
+          <div className={styles.actions}>
             <ButtonLink href="/worker/send" fullWidth icon={<PaperPlaneTilt size={20} />}>
               Send home
             </ButtonLink>
-          ) : (
-            <WorkerSignIn />
-          )}
-          {connected ? (
             <ButtonLink href="/worker/cashout" variant="tinted" fullWidth icon={<Bank size={20} />}>
               Cash out
             </ButtonLink>
-          ) : null}
+          </div>
 
           <div className={styles.sectionLabel}>
             <ActivityList items={items} />

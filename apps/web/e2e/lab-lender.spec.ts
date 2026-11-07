@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { connect, LENDER, resetDemo, withoutErrors } from "./helpers";
+import { resetDemo, withoutErrors } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -36,7 +36,6 @@ test("a private deposit reaches the pool from the lender's pseudonymous account"
 }) => {
   await withoutErrors(page, async () => {
     await page.goto("/lender");
-    await connect(page, LENDER);
     await expect(page.getByText("l-4f9t2c.", { exact: false }).first()).toBeVisible();
 
     const amount = page.getByRole("textbox", { name: "USDT" });
@@ -75,6 +74,8 @@ test("the mock 1Click routes answer in 1Click's shapes", async ({ request }) => 
   });
   expect(submit.status()).toBe(400);
   expect(await submit.json()).toMatchObject({ mock: true, reason: "unknown-intent" });
+  // The payroll agent's preview is read-only and, like every page, open to the shared demo
   const agent = await request.post("/api/agents/payroll");
-  expect(agent.status()).toBe(401);
+  expect(agent.status()).toBe(200);
+  expect(await agent.json()).toMatchObject({ period: expect.any(String) });
 });

@@ -4,7 +4,6 @@ import { UploadSimple } from "@phosphor-icons/react";
 import { useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { ConnectButton } from "@/components/WalletButton";
 import type { InvoiceAgentResult } from "@/lib/agents/invoice-agent";
 import { MAX_INVOICE_BYTES } from "@/lib/agents/upload-limits";
 import { uploadInvoice } from "../actions";
@@ -12,7 +11,7 @@ import { AgentReport } from "./AgentReport";
 import styles from "./owner.module.css";
 
 /** Upload → live check list → grade (SPEC §9.1). The offer appears on the invoice's own row. */
-export function InvoiceUpload({ connected }: { connected: boolean }) {
+export function InvoiceUpload() {
   const input = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +42,6 @@ export function InvoiceUpload({ connected }: { connected: boolean }) {
     if (input.current) input.current.value = "";
   };
 
-  if (!connected) return <ConnectButton account="owner" variant="tinted" size="small" />;
   return (
     <div className={styles.upload}>
       <div className={styles.uploadRow}>

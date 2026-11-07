@@ -4,7 +4,6 @@ import { ShieldCheck } from "@phosphor-icons/react";
 import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { ConnectButton } from "@/components/WalletButton";
 import {
   type DepositQuoteView,
   type DepositResult,
@@ -39,11 +38,9 @@ function txLink(network: "fake" | "testnet", hash: string) {
 /** Private deposit from any chain (SPEC §8.9): live or sample price, mock routing and delivery. */
 export function PrivateDeposit({
   assets,
-  connected,
   network,
 }: {
   assets: AssetOption[];
-  connected: boolean;
   network: "fake" | "testnet";
 }) {
   const [assetKey, setAssetKey] = useState(assets[0]?.key ?? "");
@@ -169,24 +166,20 @@ export function PrivateDeposit({
         </div>
       ) : null}
 
-      {connected ? (
-        <Button
-          fullWidth
-          icon={<ShieldCheck size={20} />}
-          disabled={!valid || !current}
-          pending={pending}
-          pendingLabel="Depositing…"
-          onClick={() =>
-            start(async () => {
-              setResult(await depositPrivately({ assetKey, amount: text }));
-            })
-          }
-        >
-          Deposit privately
-        </Button>
-      ) : (
-        <ConnectButton account="lender" fullWidth />
-      )}
+      <Button
+        fullWidth
+        icon={<ShieldCheck size={20} />}
+        disabled={!valid || !current}
+        pending={pending}
+        pendingLabel="Depositing…"
+        onClick={() =>
+          start(async () => {
+            setResult(await depositPrivately({ assetKey, amount: text }));
+          })
+        }
+      >
+        Deposit privately
+      </Button>
     </div>
   );
 }

@@ -3,23 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { type Surface, surfacesFor } from "@/lib/access";
+import { ResetDemoButton } from "./ResetDemoButton";
 import styles from "./Toolbar.module.css";
-import { WalletButton } from "./WalletButton";
-import { useWallet } from "./WalletProvider";
 
-const NAV: readonly { surface: Surface; href: string; label: string }[] = [
-  { surface: "owner", href: "/owner", label: "Owner" },
-  { surface: "worker", href: "/worker", label: "Worker" },
-  { surface: "lab", href: "/lab", label: "Lab" },
-  { surface: "lender", href: "/lender", label: "Lender" },
-];
+const NAV = [
+  { href: "/owner", label: "Owner" },
+  { href: "/worker", label: "Worker" },
+  { href: "/lab", label: "Lab" },
+  { href: "/lender", label: "Lender" },
+] as const;
 
-/** Sticky translucent toolbar. Content scrolls under it; a hairline appears once the page has scrolled. */
+/**
+ * Sticky translucent toolbar. Every page is open to everyone: the demo is shared, and each page
+ * signs as its own demo account on the server (lib/session). A hairline appears once the page has
+ * scrolled.
+ */
 export function Toolbar({ modeLabel }: { modeLabel: string }) {
   const pathname = usePathname();
-  // A connected wallet sees only its own pages (lib/access); with none, every page shows
-  const allowed = surfacesFor(useWallet().connected?.role ?? null);
   const sentinel = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLElement>(null);
 
@@ -43,7 +43,7 @@ export function Toolbar({ modeLabel }: { modeLabel: string }) {
             Homeroll
           </Link>
           <nav className={styles.nav} aria-label="Pages">
-            {NAV.filter((item) => allowed.includes(item.surface)).map((item) => (
+            {NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -56,19 +56,8 @@ export function Toolbar({ modeLabel }: { modeLabel: string }) {
           </nav>
         </div>
         <div className={styles.right}>
-          <span className={styles.pillWrap}>
-            <button
-              type="button"
-              className={`${styles.pill} t-caption`}
-              aria-describedby="demo-mode-tip"
-            >
-              {modeLabel}
-            </button>
-            <span id="demo-mode-tip" className={styles.tip} role="tooltip">
-              The server holds the demo keys and signs for you (SPEC D7).
-            </span>
-          </span>
-          <WalletButton />
+          <span className={`${styles.mode} t-caption ink-2`}>{modeLabel}</span>
+          <ResetDemoButton compact />
         </div>
       </header>
     </>

@@ -609,9 +609,9 @@ R17 is checked by the rail, not by the contract. In this build `pay_run` still m
 
 ## 9. App
 
-**Pages per wallet.** A connected demo wallet sees only its own pages: the owner sees `/owner` and `/lab`, the worker `/worker`, the lender `/lender`. The toolbar lists only those, and opening another role's page redirects to the wallet's own (`lib/access.ts`). Switching wallet in the sheet takes you to that wallet's page. With no wallet connected, every page is open. Owner console amounts always show two decimals (RM18,400.00).
+**One shared demo, no wallet step.** Every visitor (judge, tester, team) uses the same demo company and the same three demo accounts. Each page signs as its own role on the server (`lib/session.ts`): `/owner` as the employer, `/worker` as Rahim, `/lender` as the lender. There is no Connect wallet button, wallet sheet or worker sign-in. In P0 they could only choose which server-held demo key signs, and the page already says that. The toolbar shows every page, a "Demo mode" label and **Reset demo** once, so the next visitor can start over. Owner amounts always show two decimals (RM18,400.00).
 
-### 9.1 Owner console — `/owner` (desktop)
+### 9.1 Owner — `/owner` (desktop)
 
 Labelled "Owner / HR": in P0 the owner also does HR (D13).
 
@@ -619,15 +619,15 @@ Labelled "Owner / HR": in P0 the owner also does HR (D13).
 - **Invoices:** upload → live check list (4 checks) → grade card → advance offer (amount, fee, what pool gets back, what owner gets) → accept (signed by owner). The current demo company's invoices are offered as downloads.
 - **Payroll:** timesheet preview (40 lines with names, wage cap column) → "Run payroll" → the contract checks the run → the owner approves the payout intent (NEP-413, §8.11) → per-line status → result. "Reserve only" submits the run without paying, so the owner can still change it. "Pay missed worker" submits a one-line run for the same period. "Cancel run" while lines are still unsent. Errors from the contract shown with a plain-English explanation.
 - **Workers:** payee list (name + pseudonymous account); "Add payee" shows the 48-hour hold countdown.
-- **Confidential payout panel** (under the treasury, §8.11): badge **"Confidential layer: simulated"**. It shows the payout status, the intent hash and each `pay_run` hash with a NearBlocks link. Each payout hash is captioned "Simulated. In production this settles on NEAR's private shard.", and each link "Testnet transaction, publicly visible." A **"This demo vs Production"** toggle shows what an outsider sees in each case (§8.11 table).
+- **Confidential payout panel** (under the treasury, §8.11): badge **"Confidential layer: simulated"**. It shows the payout status, the intent hash and each `pay_run` hash with a NearBlocks link. Each payout hash is captioned "Simulated. In production this settles on NEAR's private shard.", and each link "Testnet transaction, publicly visible." A collapsed **"What an outsider sees: this demo and production"** table shows both cases side by side (§8.11 table).
 - **Agent keys:** shows each function-call key's receiver, methods and allowance, read from chain (`view_access_key_list`). This screen *is* the "why NEAR" slide.
 - **Activity:** every tx with actor, method, result, link to the testnet explorer.
-- **Demo mode banner:** the owner's key is held by the server (D7).
-- **Reset demo** button (§9.6).
+- **Demo mode label** in the toolbar: the owner's key is held by the server (D7).
+- **Reset demo** in the toolbar (§9.6).
 
 ### 9.2 Worker app — `/worker` (phone, PWA)
 
-- **Sign in:** phone number + OTP (**mock**). P0: Rahim's demo key is held by the server, which signs his delegate actions behind a "Demo mode" banner; the browser never holds a full-access key. P1: first sign-in generates an ed25519 key in the browser (IndexedDB) and the factory creates the account with it.
+- **No sign-in in P0:** the page is Rahim's phone. His demo key is held by the server, which signs his delegate actions behind the "Demo mode" label; the browser never holds a full-access key. P1: a phone sign-in whose first use generates an ed25519 key in the browser (IndexedDB), and the factory creates the account with it.
 - **Home:** "Hi Rahim", balance in RM (and "≈ X USDC" in small text), activity list.
 - **Send home:** recipient (Amma, bKash •••• 4471), amount, all-in cost comparison (§4), live quote, confirm. Shows both legs and a timeline.
 - **Cash out:** DuitNow to TNG eWallet or bank (mock).
@@ -655,7 +655,7 @@ Every run of the demo uses up the demo company: an invoice can be advanced once 
 2. Mints the starting treasury (RM18,400 equivalent) into its payroll treasury and tops up the pool so the §4 advance is possible.
 3. Adds the owner's key and a fresh payroll agent function-call key (fresh allowance). Both stay on the server.
 4. Gives the company a fresh synthetic seller TIN and buyer TINs, and generates its invoices (the three in §4 plus the tampered one) from the invoice template, with matching mock MyInvois records.
-5. Switches the visitor's session to the new company.
+5. Every visitor now sees the new company: the demo is shared (§9).
 
 Rate-limited per visitor, with a daily cap overall. Rough cost ≈0.3 testnet NEAR and ~15 s per reset (estimate). `pnpm demo:reset` runs the same steps from the command line. The same template generator produces the committed fixtures, so local runs, CI and the hosted app use identical files. It needs a pure-JS PDF library (no native build).
 
@@ -759,7 +759,7 @@ homeroll/
 - **Contracts:** unit tests + sandbox integration tests (`near-api` + `near-sandbox`, contracts built with `cargo near`) for every rule in §11, including gas measurement for `submit_run` and `pay_run`.
 - **Web:** `vitest` for `lib/*` (fx, hash, grading rules, relayer policy with one test per rule, model-output schema, mock model, chain client).
 - **Attacks:** `pnpm attacks` against a sandbox in CI.
-- **E2E (P1, built):** Playwright in `apps/web/e2e`. The happy path: invoice → advance → payroll → send home → settle, then Reset demo and the same path again. Also every owner control (reserve, cancel, remove mid-run, finish paying, add back, pay missed worker, add payee), the six attacks, a private deposit, the mock 1Click routes, the wallet sheet and the toolbar. Every page must load without console errors and pass axe's WCAG 2.1 A and AA checks, and the worker pages must fit a 390 px phone without sideways scroll. `pnpm test:e2e` runs it on the fake chain; `pnpm --filter web e2e:testnet` runs it, minus the lender deposit (live quotes vary), against testnet.
+- **E2E (P1, built):** Playwright in `apps/web/e2e`. The happy path: invoice → advance → payroll → send home → settle, then Reset demo and the same path again. Also every owner control (reserve, cancel, remove mid-run, finish paying, add back, pay missed worker, add payee), the six attacks, a private deposit, the mock 1Click routes, and the toolbar (every page, no wallet or sign-in step, Reset demo once). Every page must load without console errors and pass axe's WCAG 2.1 A and AA checks, and the worker pages must fit a 390 px phone without sideways scroll. `pnpm test:e2e` runs it on the fake chain; `pnpm --filter web e2e:testnet` runs it, minus the lender deposit (live quotes vary), against testnet.
 - **CI:** Biome, typecheck, `cargo fmt`, `cargo clippy -D warnings`, `cargo test` (unit + sandbox), vitest, attacks. Must be green on `main`.
 - **One-command local run (P1):** `pnpm demo` starts a local sandbox, deploys, seeds, and runs the app against it with all mocks.
 
@@ -777,7 +777,7 @@ homeroll/
 | D4 | **OutLayer is not used.** One line in the README under related work (§18). |
 | D5 | **Worker and lender accounts are pseudonymous.** Business accounts keep readable names. |
 | D6 | **Team of two, both developers.** Work is split by area of the repo (§16). |
-| D7 | Owner and workers sign with **demo keys held by the server** in P0, behind a "Demo mode" banner. Real wallet sign-in (`@hot-labs/near-connect`) is P1. |
+| D7 | Owner and workers sign with **demo keys held by the server** in P0, behind a "Demo mode" label. Every visitor shares the same demo accounts, and each page signs as its own role, so there is no wallet step (§9). Real wallet sign-in (`@hot-labs/near-connect`) is P1. |
 | D8 | **Submit once, at the end.** A submission cannot be edited. The organizer deadline stays in §17 and `HACKATHON.md`. |
 | D9 | **Payroll runs are checked whole, then paid in batches** (`submit_run` + `pay_run`). Several runs per period are allowed; a payee is paid at most once per period. ADR-0001. |
 | D10 | **The Homeroll admin onboards employers**, with a payee limit and a minimum first lender deposit. ADR-0002. |

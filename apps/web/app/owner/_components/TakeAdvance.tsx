@@ -3,15 +3,13 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
-import { ConnectButton } from "@/components/WalletButton";
 import type { FailureView } from "@/lib/describe-failure";
 import { takeAdvance } from "../actions";
 
-export function TakeAdvance({ number, connected }: { number: string; connected: boolean }) {
+export function TakeAdvance({ number }: { number: string }) {
   const [pending, start] = useTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
 
-  if (!connected) return <ConnectButton account="owner" variant="tinted" size="small" />;
   return (
     <div
       style={{

@@ -5,7 +5,6 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
-import { ConnectButton } from "@/components/WalletButton";
 import type { FailureView } from "@/lib/describe-failure";
 import type { PayeeRow } from "@/lib/views/owner";
 import { addPayee, addPayeeBack, type OwnerCallResult, removePayee } from "../actions";
@@ -28,15 +27,7 @@ function HoldCountdown({ activeFromMs }: { activeFromMs: number }) {
   );
 }
 
-export function Workers({
-  rows,
-  connected,
-  onboarding,
-}: {
-  rows: PayeeRow[];
-  connected: boolean;
-  onboarding: boolean;
-}) {
+export function Workers({ rows, onboarding }: { rows: PayeeRow[]; onboarding: boolean }) {
   const [pending, start] = useTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -55,53 +46,49 @@ export function Workers({
 
   return (
     <div className={styles.workers}>
-      {connected ? (
-        <form
-          className={styles.payeeForm}
-          onSubmit={(e) => {
-            e.preventDefault();
-            start(async () => {
-              setFailure(null);
-              setMessage(null);
-              const result = await addPayee(form);
-              if (result.ok) setForm({ name: "", role: "", cap: "" });
-              else if (result.reason === "invalid") setMessage(result.message);
-              else if (result.reason === "rejected") setFailure(result.failure);
-            });
-          }}
-        >
-          <label>
-            <span className="t-caption ink-3">Made-up name</span>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            <span className="t-caption ink-3">Role</span>
-            <input
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            <span className="t-caption ink-3">Wage cap (RM)</span>
-            <input
-              value={form.cap}
-              inputMode="decimal"
-              onChange={(e) => setForm({ ...form, cap: e.target.value })}
-              autoComplete="off"
-            />
-          </label>
-          <Button type="submit" variant="tinted" pending={pending} pendingLabel="Adding…">
-            Add payee
-          </Button>
-        </form>
-      ) : (
-        <ConnectButton account="owner" variant="tinted" size="small" />
-      )}
+      <form
+        className={styles.payeeForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          start(async () => {
+            setFailure(null);
+            setMessage(null);
+            const result = await addPayee(form);
+            if (result.ok) setForm({ name: "", role: "", cap: "" });
+            else if (result.reason === "invalid") setMessage(result.message);
+            else if (result.reason === "rejected") setFailure(result.failure);
+          });
+        }}
+      >
+        <label>
+          <span className="t-caption ink-3">Made-up name</span>
+          <input
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          <span className="t-caption ink-3">Role</span>
+          <input
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          <span className="t-caption ink-3">Wage cap (RM)</span>
+          <input
+            value={form.cap}
+            inputMode="decimal"
+            onChange={(e) => setForm({ ...form, cap: e.target.value })}
+            autoComplete="off"
+          />
+        </label>
+        <Button type="submit" variant="tinted" pending={pending} pendingLabel="Adding…">
+          Add payee
+        </Button>
+      </form>
 
       <p className={`t-caption ink-3 ${styles.tableNote}`}>
         {payeeCount} of 40 payees.{" "}
@@ -164,27 +151,25 @@ export function Workers({
                   ) : null}
                 </td>
                 <td className={styles.num}>
-                  {connected ? (
-                    row.status === "Removed" ? (
-                      <Button
-                        variant="plain"
-                        size="small"
-                        disabled={pending}
-                        onClick={() => run(() => addPayeeBack(row.accountId))}
-                      >
-                        Add back
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="plain"
-                        size="small"
-                        disabled={pending}
-                        onClick={() => run(() => removePayee(row.accountId))}
-                      >
-                        Remove
-                      </Button>
-                    )
-                  ) : null}
+                  {row.status === "Removed" ? (
+                    <Button
+                      variant="plain"
+                      size="small"
+                      disabled={pending}
+                      onClick={() => run(() => addPayeeBack(row.accountId))}
+                    >
+                      Add back
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="plain"
+                      size="small"
+                      disabled={pending}
+                      onClick={() => run(() => removePayee(row.accountId))}
+                    >
+                      Remove
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}

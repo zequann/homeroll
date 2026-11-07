@@ -11,10 +11,8 @@
   font-weight: 600;
   letter-spacing: -0.014em;
 }
-.links {
+.cta {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2) var(--s-5);
 }
 
 /* Device pair with a fade crop at its foot. The page is the ground: no plate. */

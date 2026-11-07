@@ -215,3 +215,10 @@
 .choice input {
   accent-color: var(--accent);
 }
+
+/* Send home and Cash out sit side by side: two equal choices, not a stack of buttons */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2);
+}

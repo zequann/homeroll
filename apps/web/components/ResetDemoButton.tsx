@@ -4,11 +4,15 @@ import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { resetDemo } from "@/app/owner/actions";
 import { Button } from "./Button";
+import styles from "./ResetDemoButton.module.css";
 
 const ARM_WINDOW_MS = 4000;
 
-/** First press arms it, a second press within 4 seconds resets. Nothing is lost by one stray tap. */
-export function ResetDemoButton() {
+/**
+ * Reset demo (SPEC §9.6), once, in the toolbar of every page. First press arms it, a second press
+ * within 4 seconds resets. Nothing is lost by one stray tap.
+ */
+export function ResetDemoButton({ compact = false }: { compact?: boolean }) {
   const [armed, setArmed] = useState(false);
   const [failed, setFailed] = useState(false);
   const [pending, start] = useTransition();
@@ -35,27 +39,25 @@ export function ResetDemoButton() {
     });
   };
 
-  const button = (
-    <Button
-      variant="plain"
-      size="small"
-      icon={<ArrowCounterClockwise size={20} />}
-      pending={pending}
-      pendingLabel="Resetting…"
-      onClick={press}
-    >
-      {armed ? "Press again to reset" : "Reset demo"}
-    </Button>
-  );
-  if (!failed) return button;
+  const label = armed ? "Press again to reset" : "Reset demo";
   return (
-    <span
-      style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}
-    >
-      {button}
-      <span className="t-caption ink-2" role="alert">
-        Reset demo could not finish: the testnet RPC is busy. Wait a minute, then press it again.
-      </span>
+    <span className={styles.wrap}>
+      <Button
+        variant="plain"
+        size="small"
+        icon={<ArrowCounterClockwise size={20} />}
+        pending={pending}
+        pendingLabel="Resetting…"
+        onClick={press}
+      >
+        {/* Armed, the label shows on a phone too: the second press needs saying */}
+        <span className={compact && !armed ? styles.compactLabel : undefined}>{label}</span>
+      </Button>
+      {failed ? (
+        <span className={`${styles.error} t-caption ink-2`} role="alert">
+          Reset demo could not finish: the testnet RPC is busy. Wait a minute, then press it again.
+        </span>
+      ) : null}
     </span>
   );
 }

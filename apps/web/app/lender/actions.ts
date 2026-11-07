@@ -19,9 +19,9 @@ import { getEnv } from "@/lib/env";
 import { explain, explainProtocol } from "@/lib/errors/explain";
 import { formatUsdc } from "@/lib/fx";
 import { listTokens, quoteDepositLeg } from "@/lib/intents";
-import { getChainClient, getFixtures } from "@/lib/near";
+import { getChainClient } from "@/lib/near";
 import type { TxFailure } from "@/lib/near/client";
-import { requireSigner } from "@/lib/session";
+import { demoSigner } from "@/lib/session";
 
 // One limiter per server process, kept across hot reloads (R16.2, SPEC §18).
 const globalForDeposit = globalThis as unknown as { __homerollDepositLimiter?: DepositLimiter };
@@ -109,13 +109,8 @@ function failureSentence(failure: TxFailure): string {
 /** Private deposit (SPEC §8.9): mock routing and delivery, then a real pool deposit. */
 export async function depositPrivately(raw: unknown): Promise<DepositResult> {
   labelAction("Deposit privately");
-  const session = await requireSigner("lender");
-  if (!session.connected) return { ok: false, message: "Connect the lender wallet to deposit." };
   // Only the demo lender's pseudonymous account, never an account the browser names
-  const lender = getFixtures().lender.accountId;
-  if (session.signer.accountId !== lender) {
-    return { ok: false, message: "Connect the lender wallet to deposit." };
-  }
+  const lender = demoSigner("lender").accountId;
 
   const quote = await price(raw);
   if (!quote) return { ok: false, message: "Enter an amount like 1,000 or 0.5. Nothing was sent." };
