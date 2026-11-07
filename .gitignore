@@ -6,6 +6,8 @@ out/
 *.tsbuildinfo
 coverage/
 .data/
+playwright-report/
+test-results/
 
 # Secrets: only .env.example is committed (CLAUDE.md rule 2)
 .env

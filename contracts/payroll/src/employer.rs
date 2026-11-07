@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use homeroll_common::errors::{
     ERR_ABOVE_WAGE_CAP, ERR_ALREADY_PAID, ERR_BELOW_BUFFER, ERR_DUPLICATE_PAYEE,
     ERR_PAYEE_NOT_ACTIVE, ERR_PERIOD_NOT_OPEN, ERR_RUN_COMPLETE, ERR_RUN_NOT_FOUND,
-    ERR_TOO_MANY_LINES, ERR_TOO_MANY_PAYEES,
+    ERR_TOO_MANY_LINES, ERR_TOO_MANY_PAYEES, ERR_UNKNOWN_PAYEE,
 };
 use homeroll_common::period::Period;
 use near_sdk::json_types::{U64, U128};
@@ -47,6 +47,13 @@ pub(crate) struct SubmittedRun {
     pub(crate) run_id: u64,
     pub(crate) period: String,
     pub(crate) total: u128,
+    pub(crate) line_count: u32,
+}
+
+/// What `cancel_run` hands back to the shell for the event.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct CancelledRun {
+    pub(crate) returned: u128,
     pub(crate) line_count: u32,
 }
 
@@ -139,6 +146,52 @@ impl Employer {
         let payee = Payee { cap, active_from };
         self.payees.insert(account_id, payee);
         Ok(payee)
+    }
+
+    /// Removes a payee at once (SPEC §7.3). Lines not yet sent stay `Reserved` and are skipped,
+    /// with their money returned, by the next `pay_run` (R3).
+    pub(crate) fn remove_payee(&mut self, account_id: &AccountId) -> Result<(), Rejection> {
+        if self.payees.remove(account_id).is_none() {
+            return Err(Rejection::new(ERR_UNKNOWN_PAYEE));
+        }
+        Ok(())
+    }
+
+    /// Every `Reserved` line becomes `Cancelled` and its amount goes back to the treasury. Lines
+    /// already sent stay as they are and settle normally (SPEC §7.3).
+    pub(crate) fn cancel_run(&mut self, run_id: u64) -> Result<CancelledRun, Rejection> {
+        let Some(run_id) = u32::try_from(run_id)
+            .ok()
+            .filter(|&id| id < self.runs.len())
+        else {
+            return Err(Rejection::new(ERR_RUN_NOT_FOUND));
+        };
+        let run = self
+            .runs
+            .get_mut(run_id)
+            .expect("run id was validated above");
+        let mut returned = 0u128;
+        let mut line_count = 0u32;
+        for line in &mut run.lines {
+            if matches!(line.status, LineStatus::Reserved) {
+                line.status = LineStatus::Cancelled;
+                returned = returned
+                    .checked_add(line.amount)
+                    .expect("a reserved total fit in the treasury");
+                line_count += 1;
+            }
+        }
+        if line_count == 0 {
+            return Err(Rejection::new(ERR_RUN_COMPLETE));
+        }
+        self.treasury = self
+            .treasury
+            .checked_add(returned)
+            .expect("treasury refund cannot overflow");
+        Ok(CancelledRun {
+            returned,
+            line_count,
+        })
     }
 
     /// SPEC §7.3 steps 1–8. Checks borrow `&self`, so no check can write state.
@@ -425,6 +478,12 @@ impl Employer {
             .collect()
     }
 
+    /// One run by id, or `None` for an id this employer never used.
+    pub(crate) fn run_view(&self, run_id: u64) -> Option<RunView> {
+        let id = u32::try_from(run_id).ok()?;
+        self.runs.get(id).map(|run| RunView::of(run_id, run))
+    }
+
     /// Looks up `period` as stored. Keys are canonical, so other text finds nothing.
     pub(crate) fn runs_in(&self, period: &str) -> Vec<RunView> {
         self.run_ids(period)
@@ -687,5 +746,120 @@ mod tests {
             .submit_run(NOW, "2026-11", &[line(W1, 50)], &Config::INITIAL)
             .expect("retry after failure");
         assert_eq!(employer.treasury, 150);
+    }
+
+    #[test]
+    fn cancel_run_returns_reserved_money_and_frees_the_period() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        assert_eq!(employer.treasury, 0);
+        let cancelled = employer.cancel_run(0).expect("cancel");
+        assert_eq!(cancelled.returned, 100);
+        assert_eq!(cancelled.line_count, 1);
+        assert_eq!(employer.treasury, 100);
+        let runs = employer.runs_in("2026-11");
+        assert_eq!(runs[0].status, RunStatus::Cancelled);
+        assert_eq!(runs[0].lines[0].status, LineStatus::Cancelled);
+        // A cancelled line does not hold the period: the payee can be paid in a new run
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("resubmit after cancel");
+    }
+
+    #[test]
+    fn cancel_run_leaves_sent_lines_and_returns_only_the_reserved_ones() {
+        let mut employer = employer_with_two_payees();
+        employer
+            .submit_run(
+                NOW,
+                "2026-11",
+                &[line(W1, 100), line(W2, 100)],
+                &Config::INITIAL,
+            )
+            .expect("submit");
+        employer
+            .pay_run(0, NOW, &config_one_line_per_call())
+            .expect("send the first line");
+        let cancelled = employer.cancel_run(0).expect("cancel the rest");
+        assert_eq!(cancelled.returned, 100);
+        assert_eq!(cancelled.line_count, 1);
+        assert_eq!(employer.treasury, 100);
+        let runs = employer.runs_in("2026-11");
+        assert_eq!(runs[0].lines[0].status, LineStatus::Sent);
+        assert_eq!(runs[0].lines[1].status, LineStatus::Cancelled);
+        // The sent line settles normally afterwards
+        assert_eq!(employer.settle_line(0, 0, true), Settlement::Paid);
+    }
+
+    #[test]
+    fn cancel_run_refuses_an_unknown_run_and_a_run_with_nothing_reserved() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        assert_eq!(
+            employer.cancel_run(0).unwrap_err().as_str(),
+            "ERR_RUN_NOT_FOUND"
+        );
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        employer.cancel_run(0).expect("first cancel");
+        assert_eq!(
+            employer.cancel_run(0).unwrap_err().as_str(),
+            "ERR_RUN_COMPLETE"
+        );
+        assert_eq!(employer.treasury, 100);
+        assert_eq!(
+            employer.cancel_run(u64::MAX).unwrap_err().as_str(),
+            "ERR_RUN_NOT_FOUND"
+        );
+    }
+
+    #[test]
+    fn a_payee_removed_before_payment_is_skipped_and_the_money_returns() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        employer.remove_payee(&account(W1)).expect("remove");
+        assert_eq!(employer.view().payee_count, 0);
+        // R3: the removed payee's reserved line is skipped and its money goes back
+        let actions = employer
+            .pay_run(0, NOW, &Config::INITIAL)
+            .expect("pay what is left");
+        assert!(matches!(actions[0], PayAction::Skipped { index: 0, .. }));
+        assert_eq!(employer.treasury, 100);
+        assert_eq!(employer.runs_in("2026-11")[0].status, RunStatus::Done);
+    }
+
+    #[test]
+    fn removing_an_unknown_payee_is_refused() {
+        let mut employer = employer_with_one_payee();
+        assert_eq!(
+            employer
+                .remove_payee(&account(STRANGER))
+                .unwrap_err()
+                .as_str(),
+            "ERR_UNKNOWN_PAYEE"
+        );
+        assert_eq!(employer.view().payee_count, 1);
+    }
+
+    #[test]
+    fn run_view_finds_one_run_by_id() {
+        let mut employer = employer_with_one_payee();
+        employer.treasury = 100;
+        assert!(employer.run_view(0).is_none());
+        employer
+            .submit_run(NOW, "2026-11", &[line(W1, 100)], &Config::INITIAL)
+            .expect("submit");
+        let view = employer.run_view(0).expect("run 0");
+        assert_eq!(view.run_id, 0);
+        assert_eq!(view.period, "2026-11");
+        assert!(employer.run_view(1).is_none());
+        assert!(employer.run_view(u64::MAX).is_none());
     }
 }

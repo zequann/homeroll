@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import {
+  derivedDepositRouteAccounts,
+  provisionDepositRoute,
+} from "../apps/web/lib/fund/deposit-route.ts";
+import {
   applyFundAction,
   companyFloors,
   fundAccounts,
@@ -46,4 +50,9 @@ actions = planFund(await readFundSnapshot(accounts), floors, accounts);
 if (actions.length > 0) {
   throw new Error("fund plan did not converge");
 }
+// The mock solver's float and the demo lender's account, for private deposits (SPEC §8.9)
+await provisionDepositRoute(
+  derivedDepositRouteAccounts(env.input.root, env.input.seedHex, fixtures.lender.accountId),
+  admin,
+);
 console.log(JSON.stringify({ ok: true, actions: 0 }));

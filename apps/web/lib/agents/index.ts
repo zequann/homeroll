@@ -1,4 +1,5 @@
 import { getChainClient, getFixtures } from "@/lib/near";
+import { cacheForEmployer, type EmployerCache } from "@/lib/near/demo-company";
 import { MockInference } from "./inference";
 import type { InvoiceAgentDeps, InvoiceAgentResult } from "./invoice-agent";
 import { mockMyInvois } from "./myinvois";
@@ -19,12 +20,16 @@ export function invoiceAgentDeps(): InvoiceAgentDeps {
  * (SPEC §8.7 `invoices` table; in memory until Supabase is wired). Cleared by Reset demo.
  */
 const globalForResults = globalThis as unknown as {
-  __homerollInvoiceResults?: Map<string, InvoiceAgentResult>;
+  __homerollInvoiceResults?: EmployerCache<Map<string, InvoiceAgentResult>>;
 };
 
 export function invoiceResults(): Map<string, InvoiceAgentResult> {
   globalForResults.__homerollInvoiceResults ??= new Map();
-  return globalForResults.__homerollInvoiceResults;
+  return cacheForEmployer(
+    globalForResults.__homerollInvoiceResults,
+    getFixtures().company.accountId,
+    () => new Map(),
+  );
 }
 
 /**

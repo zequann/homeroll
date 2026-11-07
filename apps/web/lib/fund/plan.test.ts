@@ -22,6 +22,15 @@ const met: FundSnapshot = {
   escrowBalance: floors.escrowFloat,
 };
 
+describe("companyFloors", () => {
+  it("funds the pool for the Grade C and Grade A advances together (SPEC §4)", () => {
+    // RM25,200 (60% of INV-2026-1047) then RM120,000 (80% of INV-2026-1043)
+    expect(floors.poolCash).toBe(senToUnits(sen(2_520_000)) + senToUnits(sen(12_000_000)));
+    // Different buyers, so the per-buyer limit only needs the largest single advance (R11)
+    expect(floors.maxBuyerExposure).toBe(senToUnits(sen(12_000_000)));
+  });
+});
+
 describe("planFund", () => {
   it("returns no actions when floors are already met", () => {
     expect(planFund(met, floors, accounts)).toEqual([]);
@@ -80,6 +89,5 @@ describe("planFund", () => {
 
   it("uses senToUnits for the RM18,400 treasury floor", () => {
     expect(floors.treasury).toBe(senToUnits(sen(fixtures.company.treasurySen)));
-    expect(floors.poolCash).toBe(senToUnits(sen(12_000_000)));
   });
 });

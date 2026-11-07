@@ -52,7 +52,7 @@ describe("fixtures", () => {
 
   it("builds account IDs from the root it is given", () => {
     expect(f.company.accountId).toBe(`perabotjaya.${ROOT}`);
-    expect(f.lender.accountId).toBe(`seri-capital.${ROOT}`);
+    expect(f.lender.accountId).toBe(`l-4f9t2c.${ROOT}`);
   });
 
   it("resolves names off-chain and nowhere else", () => {

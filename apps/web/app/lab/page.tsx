@@ -1,10 +1,12 @@
 import { ResetDemoButton } from "@/components/ResetDemoButton";
+import { guardPage } from "@/lib/page-access";
 import { AttackCard } from "./_components/AttackCard";
 import styles from "./_components/lab.module.css";
 
 export const metadata = { title: "Attack lab · Homeroll" };
 
-export default function LabPage() {
+export default async function LabPage() {
+  await guardPage("/lab");
   return (
     <main className="page">
       <div className={styles.stack}>
@@ -54,6 +56,14 @@ export default function LabPage() {
           story={
             "The payroll agent's key signs tusdc.ft_transfer (with and without 1 yocto) and payroll.add_payee."
           }
+        />
+        <AttackCard
+          id="06"
+          title="Tampered payout intent"
+          story={
+            "The payroll agent edits the owner's signed payout intent to pay Rahim's wage to rahim-wallet.testnet, signs it with its own key, then replays the owner's intent."
+          }
+          badge="Confidential layer: simulated"
         />
       </div>
     </main>

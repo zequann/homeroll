@@ -7,7 +7,7 @@ import { attestFixtureInvoices, key } from "@/lib/near/client.suite";
 import { FakeChainClient } from "@/lib/near/fake";
 import { toPayLines } from "@/lib/payroll";
 import { period } from "./near/client";
-import { createFakeRelayState, fakeChainTransfer, nearChainTransfer } from "./worker-transfer";
+import { createFakeRelayState, fakeChainTransfer } from "./worker-transfer";
 
 const ROOT = "homeroll-test.testnet";
 const accounts = homerollAccounts(ROOT);
@@ -36,39 +36,6 @@ async function paidRahim() {
   if (!rahim) throw new Error("no Rahim");
   return { chain, rahim, state: createFakeRelayState() };
 }
-
-describe("testnet transfers through NearChainClient", () => {
-  const chainThat = (ftTransfer: () => Promise<unknown>) => ({ ftTransfer }) as never;
-
-  it("returns the transaction hash", async () => {
-    const chain = chainThat(async () => ({ ok: true, txHash: "abc", value: null }));
-    expect(await nearChainTransfer(chain, "w", accounts.payout, units(1n), "m")).toEqual({
-      ok: true,
-      txHash: "abc",
-    });
-  });
-
-  it("turns a relayer refusal into a plain sentence", async () => {
-    const chain = chainThat(async () => {
-      throw new Error('relay rejected: {"rule":"amount_cap"}');
-    });
-    const result = await nearChainTransfer(chain, "w", accounts.payout, units(1n), "m");
-    expect(result).toMatchObject({ ok: false, rule: "amount_cap" });
-    expect(!result.ok && result.message).toContain("RM2,000");
-  });
-
-  it("calls anything else unavailable, without showing the raw error", async () => {
-    const chain = chainThat(async () => {
-      throw new Error('relay rejected: {"reason":"rpc_unavailable"}');
-    });
-    const result = await nearChainTransfer(chain, "w", accounts.payout, units(1n), "m");
-    expect(result).toEqual({
-      ok: false,
-      rule: "unavailable",
-      message: "The relayer is unavailable. Try again.",
-    });
-  });
-});
 
 describe("fake-chain transfers go through the real relayer policy", () => {
   it("sends Rahim's RM800 home and moves the tokens", async () => {

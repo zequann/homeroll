@@ -441,6 +441,52 @@ export function runChainClientSuite(
       });
     });
 
+    describe("lender deposit (SPEC §8.9)", () => {
+      const lenderSigner = (accountId: string): Signer => ({ role: "lender", accountId });
+
+      it("mints shares at current NAV for tUSDC the solver delivered", async () => {
+        const { chain, fixtures } = await setup();
+        const lender = fixtures.lender.accountId;
+        const amount = units(1_000_000_000n);
+        const pool = await chain.getPool();
+        const before = (await chain.getLender(lender))?.shares ?? 0n;
+
+        expect((await chain.deliverFromSolver(lender, amount)).ok).toBe(true);
+        expect(await chain.ftBalanceOf(lender)).toBe(amount);
+        const result = await chain.depositToPool(lenderSigner(lender), amount);
+
+        const minted = (amount * pool.totalShares) / (pool.cash + pool.outstanding);
+        expect(result.ok && result.value.shares).toBe(minted);
+        expect((await chain.getLender(lender))?.shares).toBe(before + minted);
+        expect((await chain.getPool()).cash).toBe(pool.cash + amount);
+        expect(await chain.ftBalanceOf(lender)).toBe(0n);
+      });
+
+      it("refuses a new lender's first deposit below the floor and keeps their tUSDC (R15)", async () => {
+        const { chain, fixtures } = await setup();
+        const newcomer = `l-zz0001.${fixtures.root}`;
+        const { minFirstDeposit, cash } = await chain.getPool();
+        const short = units(minFirstDeposit - 1n);
+        await chain.deliverFromSolver(newcomer, short);
+
+        const result = await chain.depositToPool(lenderSigner(newcomer), short);
+        expectFailureText(result, "ERR_DEPOSIT_TOO_SMALL");
+        expect(await chain.getLender(newcomer)).toBeNull();
+        expect(await chain.ftBalanceOf(newcomer)).toBe(short);
+        expect((await chain.getPool()).cash).toBe(cash);
+      });
+
+      it("makes a new lender of a first deposit at the floor (R15)", async () => {
+        const { chain, fixtures } = await setup();
+        const newcomer = `l-zz0002.${fixtures.root}`;
+        const { minFirstDeposit } = await chain.getPool();
+        await chain.deliverFromSolver(newcomer, minFirstDeposit);
+        const result = await chain.depositToPool(lenderSigner(newcomer), minFirstDeposit);
+        expect(result.ok && result.value.shares > 0n).toBe(true);
+        expect((await chain.getLender(newcomer))?.shares).toBeGreaterThan(0n);
+      });
+    });
+
     it("resets to the fixtures", async () => {
       const { chain, owner, employer, fixtures } = await setup();
       await chain.requestAdvance(

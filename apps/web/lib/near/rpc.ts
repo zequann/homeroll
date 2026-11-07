@@ -4,6 +4,7 @@ import {
   Account,
   actions,
   baseDecode,
+  baseEncode,
   buildDelegateAction,
   type DelegateAction,
   encodeDelegateAction,
@@ -450,14 +451,17 @@ function parseListedKeys(raw: unknown): readonly ListedKey[] {
 
 /** Balance plus every access key. `viewAccount` keeps full-access keys only. */
 export async function viewAccountState(accountId: string): Promise<ListedAccount> {
-  const account = await viewAccount(accountId);
-  if (!account.exists) return { kind: "absent" };
+  let balanceYocto: bigint;
+  try {
+    balanceYocto = (await provider().viewAccount({ accountId })).amount;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("does not exist") || msg.includes("UnknownAccount")) return { kind: "absent" };
+    throw err;
+  }
+  // Two RPC calls, not three: Reset demo checks 43 accounts this way, twice, on rate-limited RPCs
   const listed = await provider().viewAccessKeyList({ accountId });
-  return {
-    kind: "present",
-    balanceYocto: account.balanceYocto,
-    keys: parseListedKeys(listed),
-  };
+  return { kind: "present", balanceYocto, keys: parseListedKeys(listed) };
 }
 
 export async function viewFunction(
@@ -529,6 +533,20 @@ export async function callMethods(
   return { txHash: outcome.transaction_outcome.id };
 }
 
+export async function transferNear(
+  signer: { accountId: string; secretKey: string },
+  receiverId: string,
+  yocto: bigint,
+): Promise<{ txHash: string }> {
+  if (yocto <= 0n) throw new Error("transfer amount must be positive");
+  const outcome = await signingAccount(signer).signAndSendTransaction({
+    receiverId,
+    actions: [actions.transfer(yocto)],
+    waitUntil: "FINAL",
+  });
+  return { txHash: outcome.transaction_outcome.id };
+}
+
 export async function callMethod(
   signer: { accountId: string; secretKey: string },
   receiverId: string,
@@ -572,4 +590,39 @@ export async function accessKeyList(accountId: string): Promise<unknown> {
 
 export function wasmCodeHash(wasm: Uint8Array): CodeHash {
   return createHash("sha256").update(wasm).digest("hex") as CodeHash;
+}
+
+/**
+ * NEP-413: signs a message the way a wallet's signMessage does (SPEC §8.11). near-api-js does the
+ * hashing here; lib/payout checks the result with its own hash, so the two must agree.
+ */
+export async function signNep413Message(
+  accountId: string,
+  secretKey: string,
+  payload: { message: string; recipient: string; nonce: Uint8Array; callbackUrl?: string },
+): Promise<{ publicKey: string; signature: string }> {
+  const signed = await KeyPairSigner.fromSecretKey(secretKey as KeyPairString).signNep413Message(
+    accountId,
+    payload,
+  );
+  return {
+    publicKey: signed.publicKey.toString(),
+    signature: `ed25519:${baseEncode(signed.signature)}`,
+  };
+}
+
+/** True when `signature` (`ed25519:<base58>`) is `publicKey`'s signature over `message`. */
+export function verifyEd25519(publicKey: string, message: Uint8Array, signature: string): boolean {
+  try {
+    if (!publicKey.startsWith("ed25519:") || !signature.startsWith("ed25519:")) return false;
+    const bytes = baseDecode(signature.slice("ed25519:".length));
+    if (bytes.length !== 64) return false;
+    return PublicKey.fromString(publicKey).verify(message, bytes);
+  } catch {
+    return false;
+  }
+}
+
+export function base58(bytes: Uint8Array): string {
+  return baseEncode(bytes);
 }

@@ -13,6 +13,7 @@ import {
   viewAccount,
   viewFunction,
 } from "../near/rpc.ts";
+import { maxAdvanceBps } from "../pool-grades.ts";
 
 export type FundSnapshot = {
   readonly poolCash: Units;
@@ -82,12 +83,17 @@ const GAS_FT_CALL = 100n * 1_000_000_000_000n;
 const ESCROW_FUND_YOCTO = 2n * 10n ** 24n;
 
 export function companyFloors(fixtures: Fixtures): FundFloors {
-  const advance = senToUnits(sen(12_000_000));
+  // Each invoice's largest advance at its demo grade: RM120,000 (A), RM25,200 (C), none (D)
+  const advances = fixtures.invoices.map((i) =>
+    senToUnits(sen(Math.floor((i.amountSen * maxAdvanceBps(i.expectedGrade)) / 10_000))),
+  );
   const invoices = fixtures.invoices.reduce((sum, i) => sum + senToUnits(sen(i.amountSen)), 0n);
   return {
-    poolCash: advance,
+    // The demo takes the Grade C advance first ("Short by RM39,400"), then Grade A: both must fit
+    poolCash: units(advances.reduce((sum, a) => sum + a, 0n)),
     treasury: senToUnits(sen(fixtures.company.treasurySen)),
-    maxBuyerExposure: advance,
+    // Each invoice has its own buyer, so the per-buyer limit needs the largest single advance (R11)
+    maxBuyerExposure: units(advances.reduce((max, a) => (a > max ? a : max), 0n)),
     escrowFloat: units(invoices),
   };
 }
@@ -306,4 +312,24 @@ export async function applyFundAction(action: FundAction, admin: AdminSigner): P
 
 export function readFundEnv(env: Readonly<Record<string, string | undefined>>) {
   return readDeployEnv(env);
+}
+
+/** Mints testnet tUSDC to the admin if needed, then credits one employer's payroll treasury. */
+export async function addTreasury(
+  admin: AdminSigner,
+  employer: AccountId,
+  amount: Units,
+): Promise<void> {
+  const { tusdc, payroll } = accountsFor(admin.accountId);
+  if (!(await storageRegistered(tusdc, admin.accountId))) {
+    await applyFundAction({ kind: "storageDeposit", accountId: admin.accountId, tusdc }, admin);
+  }
+  const balance = await ftBalanceOf(tusdc, admin.accountId);
+  if (balance < amount) {
+    await applyFundAction(
+      { kind: "mint", funder: admin.accountId, tusdc, amount: units(amount - balance) },
+      admin,
+    );
+  }
+  await applyFundAction({ kind: "creditTreasury", payroll, employer, tusdc, amount }, admin);
 }

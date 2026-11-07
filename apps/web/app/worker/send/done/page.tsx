@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ButtonLink } from "@/components/Button";
 import { formatRm, formatTaka, sen } from "@/lib/fx";
 import { getMockLedger } from "@/lib/mock/ledger";
+import { guardPage } from "@/lib/page-access";
 import { quoteWithSwap, SampleQuote } from "@/lib/remit";
 import styles from "../../_components/worker.module.css";
 
@@ -15,6 +16,7 @@ export default async function SentPage({
 }: {
   searchParams: Promise<{ rm?: string; ref?: string }>;
 }) {
+  await guardPage("/worker/send/done");
   const params = await searchParams;
   const parsed = z.coerce.number().int().positive().max(100_000_000).safeParse(params.rm);
   // Only a mock ledger reference is shown back; anything else in the URL is dropped

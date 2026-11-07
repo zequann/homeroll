@@ -1,7 +1,7 @@
 import type { Fixtures } from "@homeroll/fixtures";
 import type { AccountId } from "@homeroll/shared";
 import { type Sen, sen, senToUnits } from "@/lib/fx";
-import type { ChainClient, PayLine, Period, RunView } from "@/lib/near/client";
+import type { ChainClient, PayeeView, PayLine, Period, RunView } from "@/lib/near/client";
 
 /**
  * Payroll agent (SPEC §8.2): turns the period's timesheet into the pay lines it proposes. It leaves
@@ -32,17 +32,34 @@ export function holdersOf(runs: RunView[]): Set<AccountId> {
   );
 }
 
+/** Payees and runs the caller already read for this period, so the chain is not asked twice. */
+export interface PayrollReads {
+  payees: PayeeView[];
+  runs: RunView[] | null;
+}
+
+async function readPayroll(
+  chain: ChainClient,
+  employer: string,
+  period: Period,
+): Promise<PayrollReads> {
+  const [payees, runs] = await Promise.all([
+    chain.getPayees(employer),
+    chain.getRuns(employer, period),
+  ]);
+  return { payees, runs };
+}
+
 export async function proposePayroll(
   chain: ChainClient,
   fixtures: Fixtures,
   period: Period,
   nowMs: number,
+  reads?: PayrollReads,
 ): Promise<PayrollProposal> {
   const employer = fixtures.company.accountId;
-  const [payees, runs] = await Promise.all([
-    chain.getPayees(employer),
-    chain.getRuns(employer, period),
-  ]);
+  const known: PayrollReads = reads ?? (await readPayroll(chain, employer, period));
+  const { payees, runs } = known;
   const payeeBy = new Map(payees.map((p) => [p.accountId, p]));
   const holders = holdersOf(runs ?? []);
   const nowNs = BigInt(nowMs) * 1_000_000n;

@@ -3,19 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { type Surface, surfacesFor } from "@/lib/access";
 import styles from "./Toolbar.module.css";
 import { WalletButton } from "./WalletButton";
+import { useWallet } from "./WalletProvider";
 
-const NAV = [
-  { href: "/owner", label: "Owner" },
-  { href: "/worker", label: "Worker" },
-  { href: "/lab", label: "Lab" },
-  { href: "/lender", label: "Lender" },
-] as const;
+const NAV: readonly { surface: Surface; href: string; label: string }[] = [
+  { surface: "owner", href: "/owner", label: "Owner" },
+  { surface: "worker", href: "/worker", label: "Worker" },
+  { surface: "lab", href: "/lab", label: "Lab" },
+  { surface: "lender", href: "/lender", label: "Lender" },
+];
 
 /** Sticky translucent toolbar. Content scrolls under it; a hairline appears once the page has scrolled. */
 export function Toolbar({ modeLabel }: { modeLabel: string }) {
   const pathname = usePathname();
+  // A connected wallet sees only its own pages (lib/access); with none, every page shows
+  const allowed = surfacesFor(useWallet().connected?.role ?? null);
   const sentinel = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLElement>(null);
 
@@ -39,7 +43,7 @@ export function Toolbar({ modeLabel }: { modeLabel: string }) {
             Homeroll
           </Link>
           <nav className={styles.nav} aria-label="Pages">
-            {NAV.map((item) => (
+            {NAV.filter((item) => allowed.includes(item.surface)).map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

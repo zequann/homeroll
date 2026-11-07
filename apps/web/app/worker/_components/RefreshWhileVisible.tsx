@@ -3,8 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-/** Re-reads the page every 2 seconds while the tab is visible, so a wage shows within seconds of Run payroll. */
-export function RefreshWhileVisible({ everyMs = 2000 }: { everyMs?: number }) {
+/**
+ * Re-reads the page every 5 seconds while the tab is visible, so a wage shows within seconds of
+ * Run payroll. Each refresh is two chain reads; faster polling hits free RPC rate limits.
+ */
+export function RefreshWhileVisible({ everyMs = 5000 }: { everyMs?: number }) {
   const router = useRouter();
   useEffect(() => {
     const tick = () => {

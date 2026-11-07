@@ -24,7 +24,7 @@ export function Invoices({ rows, connected }: { rows: InvoiceRow[]; connected: b
                 <div className="t-headline">{inv.number}</div>
                 <div className="ink-2">{inv.buyer}</div>
                 <div className="ink-2">
-                  <Money value={inv.amountSen} /> · due {inv.due}
+                  <Money value={inv.amountSen} decimals={2} /> · due {inv.due}
                 </div>
                 <a className="t-caption" href={`/api/invoices/${inv.number}`}>
                   Download PDF
@@ -72,32 +72,32 @@ function Summary({ row }: { row: InvoiceRow }) {
         <dl className={styles.offer}>
           <dt>Advance now</dt>
           <dd>
-            <Money value={offer.advanceSen} />
+            <Money value={offer.advanceSen} decimals={2} />
           </dd>
           <dt>Fee</dt>
           <dd>
-            <Money value={offer.feeSen} />
+            <Money value={offer.feeSen} decimals={2} />
           </dd>
           <dt>Pool gets back</dt>
           <dd>
-            <Money value={offer.poolGetsBackSen} />
+            <Money value={offer.poolGetsBackSen} decimals={2} />
           </dd>
           <dt>You get when the buyer pays</dt>
           <dd>
-            <Money value={offer.ownerGetsSen} />
+            <Money value={offer.ownerGetsSen} decimals={2} />
           </dd>
         </dl>
       ) : null}
       {row.status === "Advanced" && row.advanceSen !== null ? (
         <span className="ink-2">
-          Advanced <Money value={row.advanceSen} /> · fee{" "}
-          {row.feeSen !== null ? <Money value={row.feeSen} /> : null}
+          Advanced <Money value={row.advanceSen} decimals={2} /> · fee{" "}
+          {row.feeSen !== null ? <Money value={row.feeSen} decimals={2} /> : null}
         </span>
       ) : null}
       {row.status === "Settled" && offer ? (
         <span className="ink-2">
-          Buyer paid. Pool repaid <Money value={offer.poolGetsBackSen} />, you received{" "}
-          <Money value={offer.ownerGetsSen} />.
+          Buyer paid. Pool repaid <Money value={offer.poolGetsBackSen} decimals={2} />, you received{" "}
+          <Money value={offer.ownerGetsSen} decimals={2} />.
         </span>
       ) : null}
     </>

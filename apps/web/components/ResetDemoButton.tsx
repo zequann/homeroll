@@ -10,6 +10,7 @@ const ARM_WINDOW_MS = 4000;
 /** First press arms it, a second press within 4 seconds resets. Nothing is lost by one stray tap. */
 export function ResetDemoButton() {
   const [armed, setArmed] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [pending, start] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -23,12 +24,18 @@ export function ResetDemoButton() {
     }
     if (timer.current) clearTimeout(timer.current);
     setArmed(false);
+    setFailed(false);
     start(async () => {
-      await resetDemo();
+      try {
+        await resetDemo();
+      } catch {
+        // A failed reset resumes the same company next time, so pressing again is safe
+        setFailed(true);
+      }
     });
   };
 
-  return (
+  const button = (
     <Button
       variant="plain"
       size="small"
@@ -39,5 +46,16 @@ export function ResetDemoButton() {
     >
       {armed ? "Press again to reset" : "Reset demo"}
     </Button>
+  );
+  if (!failed) return button;
+  return (
+    <span
+      style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}
+    >
+      {button}
+      <span className="t-caption ink-2" role="alert">
+        Reset demo could not finish: the testnet RPC is busy. Wait a minute, then press it again.
+      </span>
+    </span>
   );
 }

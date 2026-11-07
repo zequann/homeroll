@@ -11,6 +11,7 @@ export type KeyRole =
   | "invoiceAgent"
   | "escrow"
   | "solver"
+  | "lender"
   | "payout"
   | "offramp";
 

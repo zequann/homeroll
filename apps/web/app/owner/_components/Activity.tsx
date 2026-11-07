@@ -15,6 +15,7 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
         <thead>
           <tr>
             <th scope="col">When</th>
+            <th scope="col">Button</th>
             <th scope="col">Method</th>
             <th scope="col">From → to</th>
             <th scope="col" className={styles.num}>
@@ -27,6 +28,7 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
           {rows.map((row) => (
             <tr key={row.id}>
               <td className="ink-2">{row.when}</td>
+              <td>{row.button ?? <span className="ink-3">None</span>}</td>
               <td className="t-mono">{row.method}</td>
               <td className="t-mono ink-3">
                 {row.from} → {row.to}
@@ -37,7 +39,7 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
                     <div>{row.usdc}</div>
                     {row.rmHint !== null ? (
                       <div className="t-caption ink-3">
-                        ≈ <Money value={row.rmHint} />
+                        ≈ <Money value={row.rmHint} decimals={2} />
                       </div>
                     ) : null}
                   </>
@@ -54,12 +56,20 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
                 ) : (
                   <span className={styles.ok}>Success</span>
                 )}
-                {row.explorerUrl ? (
+                {row.explorerUrl && row.txHash ? (
                   <div className="t-caption">
-                    <a href={row.explorerUrl} target="_blank" rel="noreferrer">
-                      View on explorer
+                    <a
+                      className="link t-mono"
+                      href={row.explorerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Transaction ${row.txHash} on NearBlocks (opens in a new tab)`}
+                    >
+                      {row.txHash.slice(0, 10)}… on NearBlocks
                     </a>
                   </div>
+                ) : row.txHash ? (
+                  <div className="t-caption t-mono ink-3">{row.txHash}</div>
                 ) : null}
               </td>
             </tr>

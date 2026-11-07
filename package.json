@@ -12,9 +12,12 @@
     "test:contracts": "cargo test --manifest-path contracts/Cargo.toml --workspace --locked",
     "deploy:testnet": "node --experimental-strip-types scripts/deploy-testnet.ts",
     "seed:testnet": "node --experimental-strip-types scripts/seed-testnet.ts",
+    "demo:reset": "node --experimental-strip-types scripts/demo-reset.ts",
     "prove:relay": "node --experimental-strip-types scripts/prove-relay.ts",
+    "attacks": "ATTACKS_CHAIN=near pnpm --filter web exec vitest run --disableConsoleIntercept lib/attacks/attacks.cli.test.ts",
     "test": "pnpm -r --if-present test",
     "fixtures:invoices": "node --experimental-strip-types fixtures/generate-invoices.ts",
+    "test:e2e": "pnpm --filter web e2e",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "biome check .",
     "format": "biome check --write ."

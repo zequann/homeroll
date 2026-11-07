@@ -40,3 +40,84 @@
     font-size: 2rem;
   }
 }
+
+/* Private deposit (SPEC §8.9) */
+.deposit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  height: 64px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-card);
+  background: var(--ground);
+  box-shadow: inset 0 0 0 0.5px rgb(16 24 22 / 0.12);
+}
+.field:focus-within {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.field input,
+.field select {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.receives {
+  font-size: 1.75rem;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+.steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3) 0;
+  border-bottom: 0.5px solid var(--ink-5);
+}
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+.receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.receipt a {
+  color: var(--accent);
+}
+.error {
+  color: var(--danger);
+}
+@media (max-width: 559px) {
+  .inputs {
+    grid-template-columns: 1fr;
+  }
+}

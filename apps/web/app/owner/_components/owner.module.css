@@ -1,60 +1,24 @@
-/* ---- Device pair: owner panel + Rahim's phone straddling its right edge ---- */
-.pair {
-  position: relative;
-  width: 1100px;
+/* ---- The owner console: one centred panel ---- */
+.console {
+  width: min(900px, 100%);
   margin: var(--s-5) auto 0;
 }
 .panel {
-  width: 900px;
+  width: 100%;
   padding: var(--s-5);
   border-radius: var(--r-panel);
   background: var(--surface);
   box-shadow: var(--shadow-panel);
-}
-.satellite {
-  position: absolute;
-  left: 800px;
-  top: var(--s-5);
-  width: 300px;
-}
-.rowPreview {
-  display: none;
 }
 .headerRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-3);
-  /* The phone covers the panel's right 100px, so the header keeps clear of it. */
-  padding-right: 100px;
   margin-bottom: var(--s-5);
 }
 
-@media (max-width: 1199px) {
-  .pair {
-    width: auto;
-  }
-  .panel {
-    width: 100%;
-  }
-  .satellite {
-    left: auto;
-    right: var(--s-5);
-    top: calc(var(--s-5) + 60px);
-    width: 280px;
-  }
-  .headerRow {
-    padding-right: 0;
-  }
-}
 @media (max-width: 759px) {
-  .satellite {
-    display: none;
-  }
-  .rowPreview {
-    display: block;
-    margin-bottom: var(--s-4);
-  }
   .panel {
     padding: var(--s-4);
   }

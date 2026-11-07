@@ -50,6 +50,10 @@
   background: var(--accent-soft);
   box-shadow: none;
 }
+/* ink-3 on the tinted fill is 4.4:1, below WCAG AA, so captions there use ink-2 */
+.row[data-highlight] :global(.ink-3) {
+  color: var(--ink-2);
+}
 .row:disabled {
   opacity: 0.6;
 }

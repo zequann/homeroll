@@ -1,6 +1,8 @@
 import { randomInt } from "node:crypto";
 import { type AccountId, workerAccountId } from "@homeroll/shared";
 import type { Sen } from "@/lib/fx";
+import { getFixtures } from "@/lib/near";
+import { cacheForEmployer, type EmployerCache } from "@/lib/near/demo-company";
 
 /**
  * Workers the owner added in this demo: the off-chain half of the `workers` table (SPEC §8.7), in
@@ -14,12 +16,16 @@ export interface AddedWorker {
 }
 
 const globalForWorkers = globalThis as unknown as {
-  __homerollAddedWorkers?: Map<AccountId, AddedWorker>;
+  __homerollAddedWorkers?: EmployerCache<Map<AccountId, AddedWorker>>;
 };
 
 export function addedWorkers(): Map<AccountId, AddedWorker> {
   globalForWorkers.__homerollAddedWorkers ??= new Map();
-  return globalForWorkers.__homerollAddedWorkers;
+  return cacheForEmployer(
+    globalForWorkers.__homerollAddedWorkers,
+    getFixtures().company.accountId,
+    () => new Map(),
+  );
 }
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";

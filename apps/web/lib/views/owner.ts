@@ -78,14 +78,21 @@ export interface KeyRow {
 export interface ActivityRow {
   id: number;
   when: string;
+  /** The button that started it, e.g. "Run payroll". */
+  button: string | null;
   method: string;
   from: string;
   to: string;
   usdc: string | null;
   rmHint: Sen | null;
   failure: string | null;
+  txHash: string | null;
+  /** NearBlocks testnet page for the transaction. Null on the fake chain, whose hashes are made up. */
   explorerUrl: string | null;
 }
+
+/** The owner console's tabs. Invoices and agent keys are read from chain only on their own tab. */
+export type OwnerTab = "pay-lines" | "invoices" | "workers" | "agent-keys" | "activity";
 
 export interface OwnerView {
   mode: "fake" | "testnet";
@@ -102,14 +109,8 @@ export interface OwnerView {
   invoices: InvoiceRow[];
   keys: KeyRow[];
   activity: ActivityRow[];
-  /** Advances taken and not yet settled. */
-  advancedSen: Sen;
-  /** The whole period's payroll. */
-  payrollDueSen: Sen;
-  /** Cash the pool can still lend. */
-  poolCashSen: Sen;
-  /** False where the contract does not have the method yet, so the UI hides the control. */
-  canEditPayees: boolean;
+  /** SPEC §9.1 dashboard figures. Read only on the Invoices tab (free RPCs rate-limit bursts). */
+  figures: { advancedSen: Sen; poolCashSen: Sen } | null;
 }
 
 const STATUS_WORD: Record<LineStatus, PayLineStatus> = {
@@ -129,21 +130,28 @@ const time = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Kuala_Lumpur",
 });
 
-export async function loadOwnerView(): Promise<OwnerView> {
+export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerView> {
   const chain = getChainClient();
   const fixtures = getFixtures();
   const employer = fixtures.company.accountId;
   const payrollPeriod = period(fixtures.company.period);
   const accounts = homerollAccounts(getEnv().root);
 
-  const [pool, employerView, runs, ownerKeys, agentKeys, ...invoiceViews] = await Promise.all([
-    chain.getPool(),
-    chain.getEmployer(employer),
-    chain.getRuns(employer, payrollPeriod),
-    chain.getAccessKeys(employer),
-    chain.getAccessKeys(accounts.agent),
-    ...fixtures.invoices.map((i) => chain.getInvoice(i.hash)),
-  ]);
+  // Each chain read once per page, and only what the open tab shows (free RPCs rate-limit bursts)
+  const none = Promise.resolve([] as AccessKeyView[]);
+  const [employerView, runs, payeeViews, ownerKeys, agentKeys, invoiceViews, pool] =
+    await Promise.all([
+      chain.getEmployer(employer),
+      chain.getRuns(employer, payrollPeriod),
+      chain.getPayees(employer),
+      tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
+      tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
+      tab === "invoices"
+        ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
+        : Promise.resolve(fixtures.invoices.map(() => null)),
+      // The Invoices tab's figures; no other tab pays for this read
+      tab === "invoices" ? chain.getPool() : Promise.resolve(null),
+    ]);
   if (!employerView) throw new Error(`The chain does not know ${employer}`);
 
   // The line status of a worker is their line in the newest run that has one.
@@ -152,10 +160,10 @@ export async function loadOwnerView(): Promise<OwnerView> {
     for (const l of run.lines) statusByAccount.set(l.accountId, l.status);
 
   const nowMs = Date.now();
-  const [proposal, payeeViews] = await Promise.all([
-    proposePayroll(chain, fixtures, payrollPeriod, nowMs),
-    chain.getPayees(employer),
-  ]);
+  const proposal = await proposePayroll(chain, fixtures, payrollPeriod, nowMs, {
+    payees: payeeViews,
+    runs,
+  });
   const excluded = new Map(proposal.excluded.map((e) => [e.accountId, e.reason]));
 
   const payLines: PayLineRow[] = fixtures.workers.map((w, i) => {
@@ -266,19 +274,20 @@ export async function loadOwnerView(): Promise<OwnerView> {
     payLines,
     payees,
     onboarding: employerView.onboarding,
-    advancedSen: unitsToSen(
-      units(
-        invoiceViews.reduce(
-          (sum, i) => sum + (i?.status === "Advanced" && i.advance ? i.advance : 0n),
-          0n,
-        ),
-      ),
-      "nearest",
-    ),
-    payrollDueSen: facts.periodTotalSen ?? facts.totalSen,
-    poolCashSen: unitsToSen(pool.cash, "nearest"),
-    // remove_payee and cancel_run are not in the deployed contract yet (SPEC §7.3)
-    canEditPayees: chain.network === "fake",
+    figures: pool
+      ? {
+          advancedSen: unitsToSen(
+            units(
+              invoiceViews.reduce(
+                (sum, i) => sum + (i?.status === "Advanced" && i.advance ? i.advance : 0n),
+                0n,
+              ),
+            ),
+            "nearest",
+          ),
+          poolCashSen: unitsToSen(pool.cash, "nearest"),
+        }
+      : null,
     invoices,
     keys: [...agentKeysFor(ownerKeys), ...agentKeysFor(agentKeys)],
     activity: getActivityLog()
@@ -286,12 +295,14 @@ export async function loadOwnerView(): Promise<OwnerView> {
       .map((a) => ({
         id: a.id,
         when: time.format(a.at),
+        button: a.action,
         method: a.method,
         from: truncateMiddle(a.from),
         to: truncateMiddle(a.to),
         usdc: a.amount === null ? null : formatUsdc(units(a.amount)),
         rmHint: a.amount === null ? null : unitsToSen(units(a.amount), "nearest"),
         failure: a.failure,
+        txHash: a.txHash,
         explorerUrl:
           chain.network === "testnet" && a.txHash
             ? `https://testnet.nearblocks.io/txns/${a.txHash}`

@@ -2,16 +2,18 @@ import { z } from "zod";
 import { Money } from "@/components/Money";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { Segmented } from "@/components/Segmented";
+import { getFixtures } from "@/lib/near";
+import { guardPage } from "@/lib/page-access";
+import { loadPayoutPanel } from "@/lib/payout/server";
 import { readSession } from "@/lib/session";
 import { loadOwnerView } from "@/lib/views/owner";
-import { loadRahimView } from "@/lib/views/rahim";
 import { Activity } from "./_components/Activity";
 import { AgentKeys } from "./_components/AgentKeys";
+import { ConfidentialPayout } from "./_components/ConfidentialPayout";
 import { Invoices } from "./_components/Invoices";
 import styles from "./_components/owner.module.css";
 import { PayLines } from "./_components/PayLines";
 import { TreasuryHero } from "./_components/TreasuryHero";
-import { WorkerPreview } from "./_components/WorkerPreview";
 import { Workers } from "./_components/Workers";
 
 export const metadata = { title: "Owner console · Homeroll" };
@@ -32,29 +34,24 @@ export default async function OwnerPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const [{ tab: rawTab }, view, rahim, session] = await Promise.all([
-    searchParams,
-    loadOwnerView(),
-    loadRahimView(),
+  await guardPage("/owner");
+  const tab = tabSchema.parse((await searchParams).tab);
+  const [view, session, payout] = await Promise.all([
+    loadOwnerView(tab),
     readSession(),
+    loadPayoutPanel(getFixtures().company.accountId),
   ]);
-  const tab = tabSchema.parse(rawTab);
   const connected = session?.role === "Owner";
-  const preview = { balanceSen: rahim.balanceSen, usdcHint: rahim.usdcHint, wage: rahim.wage };
 
   return (
     <main className="page">
-      <div className={styles.pair}>
+      <div className={styles.console}>
         <section className={styles.panel} aria-labelledby="owner-title">
           <div className={styles.headerRow}>
             <h1 id="owner-title" className="t-title">
               Owner console
             </h1>
             <ResetDemoButton />
-          </div>
-
-          <div className={styles.rowPreview}>
-            <WorkerPreview data={preview} variant="row" />
           </div>
 
           <TreasuryHero
@@ -65,29 +62,10 @@ export default async function OwnerPage({
             periodLabel={view.periodLabel}
             facts={view.facts}
             connected={connected}
-            canCancel={view.canEditPayees}
+            canFund={view.mode === "testnet"}
           />
 
-          <dl className={styles.stats}>
-            <div>
-              <dt className="t-caption ink-3">Advanced against invoices</dt>
-              <dd>
-                <Money value={view.advancedSen} />
-              </dd>
-            </div>
-            <div>
-              <dt className="t-caption ink-3">Payroll due</dt>
-              <dd>
-                <Money value={view.payrollDueSen} />
-              </dd>
-            </div>
-            <div>
-              <dt className="t-caption ink-3">Lender pool available</dt>
-              <dd>
-                <Money value={view.poolCashSen} />
-              </dd>
-            </div>
-          </dl>
+          <ConfidentialPayout payout={payout} network={view.mode} />
 
           <div className={styles.tabs}>
             <Segmented
@@ -98,22 +76,29 @@ export default async function OwnerPage({
           </div>
 
           {tab === "pay-lines" ? <PayLines rows={view.payLines} connected={connected} /> : null}
+          {tab === "invoices" && view.figures ? (
+            <dl className={styles.stats}>
+              <div>
+                <dt className="t-caption ink-3">Advanced against invoices</dt>
+                <dd>
+                  <Money value={view.figures.advancedSen} decimals={2} />
+                </dd>
+              </div>
+              <div>
+                <dt className="t-caption ink-3">Lender pool available</dt>
+                <dd>
+                  <Money value={view.figures.poolCashSen} decimals={2} />
+                </dd>
+              </div>
+            </dl>
+          ) : null}
           {tab === "invoices" ? <Invoices rows={view.invoices} connected={connected} /> : null}
           {tab === "workers" ? (
-            <Workers
-              rows={view.payees}
-              connected={connected}
-              onboarding={view.onboarding}
-              canEdit={view.canEditPayees}
-            />
+            <Workers rows={view.payees} connected={connected} onboarding={view.onboarding} />
           ) : null}
           {tab === "agent-keys" ? <AgentKeys keys={view.keys} mode={view.mode} /> : null}
           {tab === "activity" ? <Activity rows={view.activity} /> : null}
         </section>
-
-        <aside className={styles.satellite} aria-label="Rahim's phone">
-          <WorkerPreview data={preview} />
-        </aside>
       </div>
     </main>
   );

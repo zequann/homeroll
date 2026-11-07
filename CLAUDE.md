@@ -30,7 +30,7 @@ Homeroll is a NEAR HACKATHON entry. It gives Malaysian SMEs an invoice advance, 
 - **App:** Next.js (App Router), TypeScript `strict`, deployed on Vercel. Server-only keys in route handlers. Supabase for off-chain data (SPEC §8.7).
 - **NEAR JS:** `near-api-js` 7 (chosen at setup; the modular `@near-js/*` packages are no longer published). TS code that needs a sandbox uses the `near-sandbox` npm package. In P0 the owner and workers sign with demo keys held by the server, behind a "Demo mode" banner; `@hot-labs/near-connect` wallet sign-in is P1 (SPEC D7).
 - **Chain client:** the app talks to NEAR only through the `ChainClient` interface in `lib/near/client.ts`. `FakeChainClient` (fixtures, simulates the same rules and error codes) and `NearChainClient` (testnet) must pass the same tests (SPEC §8.8).
-- **Tests:** `cargo test` (unit + sandbox integration), `vitest` for `lib/*` and `packages/shared`, Playwright for E2E (P1).
+- **Tests:** `cargo test` (unit + sandbox integration), `vitest` for `lib/*` and `packages/shared`, Playwright for E2E (`apps/web/e2e`, with axe for WCAG 2.1 AA).
 - **Lint and format:** Biome for TypeScript and JSON (`biome.json`); `cargo fmt` and `cargo clippy -D warnings` for Rust.
 - **Package manager:** `pnpm` workspaces. Shared tool versions live once in the `catalog:` of `pnpm-workspace.yaml`.
 
@@ -75,13 +75,16 @@ pnpm test                 # vitest in every package
 pnpm lint                 # biome check (pnpm format fixes)
 pnpm typecheck            # tsc in every package
 pnpm fixtures:invoices    # regenerate fixtures/invoices/*.pdf from the invoice template
-pnpm attacks              # (planned) run all attack scripts against a sandbox; exit 0 = all attacks failed as expected
+pnpm test:e2e             # Playwright on the fake chain (builds the app, serves it on :3100); needs `pnpm --filter web exec playwright install chromium` once
+pnpm --filter web e2e:testnet   # the same browser tests against testnet (:3101), slower, testnet tokens only
+pnpm attacks              # six SPEC §11 attacks on the live testnet company; exit 0 = each was refused and moved no money
 CHAIN_CLIENT=fake pnpm dev   # Next.js on fixture data, no chain needed
-pnpm dev                  # (planned) Next.js against testnet (needs .env.local)
+pnpm dev                  # Next.js against testnet (needs apps/web/.env.local, see .env.example)
 pnpm deploy:testnet       # idempotent deploy of tusdc, factory, payroll, pool to testnet
 pnpm prove:relay          # POST a signed worker ft_transfer to /api/relay on a running server
-pnpm seed                 # (planned) synthetic company, 40 workers, invoices, lenders
-pnpm demo:reset           # (planned) fresh demo company on testnet, same steps as the Reset demo button (SPEC §9.6)
+pnpm seed:testnet         # registers the fixture employer and its 40 workers on testnet (idempotent)
+pnpm demo:reset           # fresh demo company on testnet, same steps as the Reset demo button (SPEC §9.6)
+node --experimental-strip-types scripts/upgrade-payroll-testnet.ts   # swap payroll.<root> to the wasm from pnpm build:contracts (state kept; layout must not change)
 pnpm demo                 # (planned, P1) local sandbox + deploy + seed + app, all mocks
 ```
 

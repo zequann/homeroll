@@ -9,7 +9,13 @@ import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
 import { ConnectButton } from "@/components/WalletButton";
 import { formatRm, type Sen } from "@/lib/fx";
-import { cancelPayroll, payNextBatch, submitPayroll } from "../actions";
+import {
+  approvePayout,
+  cancelPayroll,
+  fundTreasury,
+  payNextBatch,
+  submitPayroll,
+} from "../actions";
 import styles from "./owner.module.css";
 import {
   buttonEnabled,
@@ -30,8 +36,8 @@ export interface TreasuryHeroProps {
   facts: RunFacts;
   /** The owner demo account is connected, so the page can sign. */
   connected: boolean;
-  /** False while the deployed contract has no cancel_run. */
-  canCancel?: boolean;
+  /** Testnet only. Mints tUSDC into this company's treasury. */
+  canFund: boolean;
 }
 
 export function TreasuryHero(props: TreasuryHeroProps) {
@@ -43,17 +49,42 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     periodLabel,
     facts,
     connected,
-    canCancel = true,
+    canFund,
   } = props;
+  const [fundNote, setFundNote] = useState<string | null>(null);
   const router = useRouter();
   const [local, setLocal] = useState<LocalPhase>(IDLE);
   const [pending, start] = useTransition();
   const state = deriveRunState(facts, local);
 
-  async function payAll(runId: number, total: number, from: number) {
+  /** The owner's payout intent first (SPEC §8.11). The sealed approval, or null when refused. */
+  async function approve(runId: number): Promise<string | null> {
+    setLocal({ checking: false, approving: true, rejection: null, paying: null });
+    const approved = await approvePayout(runId);
+    if (approved.ok) return approved.approval;
+    const failure =
+      approved.reason === "rejected"
+        ? approved.failure
+        : {
+            sentence: "Connect the owner wallet to pay.",
+            code: "NOT_CONNECTED",
+            ruleCaption: null,
+          };
+    setLocal({ ...IDLE, rejection: { failure, atTreasury: treasurySen } });
+    return null;
+  }
+
+  async function payAll(
+    runId: number,
+    total: number,
+    from: number,
+    button: "Run payroll" | "Finish paying",
+  ) {
+    const approval = await approve(runId);
+    if (!approval) return;
     setLocal({ checking: false, rejection: null, paying: { paid: from, total, runId } });
     for (;;) {
-      const batch = await payNextBatch(runId);
+      const batch = await payNextBatch(runId, approval, button);
       if (!batch.ok) {
         const failure =
           batch.reason === "rejected"
@@ -81,12 +112,12 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     if (state.kind === "paying" && !state.inFlight) {
       const { runId, paid, total } = state;
       setLocal({ checking: false, rejection: null, paying: { paid, total, runId } });
-      start(() => payAll(runId, total, paid));
+      start(() => payAll(runId, total, paid, "Finish paying"));
       return;
     }
     setLocal({ checking: true, paying: null, rejection: null });
     start(async () => {
-      const submitted = await submitPayroll();
+      const submitted = await submitPayroll("Run payroll");
       if (!submitted.ok) {
         if (submitted.reason === "not-connected") {
           setLocal(IDLE);
@@ -102,7 +133,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
         });
         return;
       }
-      await payAll(submitted.runId, submitted.lineCount, 0);
+      await payAll(submitted.runId, submitted.lineCount, 0, "Run payroll");
     });
   };
 
@@ -110,7 +141,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
   const reserveOnly = () => {
     setLocal({ checking: true, paying: null, rejection: null });
     start(async () => {
-      const submitted = await submitPayroll();
+      const submitted = await submitPayroll("Reserve only");
       setLocal(
         submitted.ok || submitted.reason === "not-connected"
           ? IDLE
@@ -144,10 +175,10 @@ export function TreasuryHero(props: TreasuryHeroProps) {
       <div className={styles.heroCol}>
         <p className="t-caption ink-3">Treasury · {companyName}</p>
         <div className={`t-display ${styles.treasury}`}>
-          <RollingMoney value={treasurySen} />
+          <RollingMoney value={treasurySen} decimals={2} />
         </div>
         <p className="t-caption ink-3">
-          {treasuryUsdc} · keeps a {formatRm(bufferSen)} buffer
+          {treasuryUsdc} · keeps a {formatRm(bufferSen, { decimals: 2 })} buffer
         </p>
 
         <StatusLine state={state} facts={facts} bufferSen={bufferSen} />
@@ -165,7 +196,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               Reserve only
             </Button>
           ) : null}
-          {state.kind === "paying" && !state.inFlight && connected && canCancel ? (
+          {state.kind === "paying" && !state.inFlight && connected ? (
             <Button variant="plain" disabled={pending} onClick={() => cancel(state.runId)}>
               Cancel run
             </Button>
@@ -178,9 +209,28 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               Take advance
             </Button>
           ) : null}
+          {canFund && connected ? (
+            <Button
+              variant="tinted"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  setFundNote(null);
+                  const result = await fundTreasury();
+                  if (result.ok) setFundNote("Added RM20,000.00 of testnet tUSDC.");
+                  else if (result.reason === "rejected") setFundNote(result.failure.sentence);
+                  else setFundNote("Connect the owner first.");
+                  router.refresh();
+                })
+              }
+            >
+              Add RM20,000.00
+            </Button>
+          ) : null}
+          {fundNote ? <span className="t-caption ink-3">{fundNote}</span> : null}
           <span className="t-caption ink-3">
             {periodLabel} · {facts.lineCount} workers ·{" "}
-            <Money value={facts.periodTotalSen ?? facts.totalSen} />
+            <Money value={facts.periodTotalSen ?? facts.totalSen} decimals={2} />
           </span>
         </div>
       </div>
@@ -200,22 +250,27 @@ function StatusLine({
   let body: React.ReactNode = null;
   switch (state.kind) {
     case "ready":
-      body = <p>{formatRm(state.leftAfter)} left after this run.</p>;
+      body = <p>{formatRm(state.leftAfter, { decimals: 2 })} left after this run.</p>;
       break;
     case "short":
       body = (
         <p className={styles.warn}>
           <WarningCircle size={20} weight="regular" />
           <span>
-            Short by {formatRm(state.shortfall)}. October payroll needs{" "}
-            {formatRm((facts.totalSen + bufferSen) as Sen)}, including the {formatRm(bufferSen)}{" "}
-            buffer.
+            Short by {formatRm(state.shortfall, { decimals: 2 })}. October payroll needs{" "}
+            {formatRm((facts.totalSen + bufferSen) as Sen, { decimals: 2 })}, including the{" "}
+            {formatRm(bufferSen, { decimals: 2 })} buffer.
           </span>
         </p>
       );
       break;
     case "checking":
       body = <p>The payroll contract is checking all {facts.lineCount} pay lines.</p>;
+      break;
+    case "approving":
+      body = (
+        <p>The owner signs the payout intent. The payout rail checks it before anything is paid.</p>
+      );
       break;
     case "paying":
       body = (
@@ -231,7 +286,7 @@ function StatusLine({
         <p className={styles.ok}>
           <CheckCircle size={20} weight="regular" />
           <span>
-            October paid · {state.lineCount} workers · {formatRm(state.total)}
+            October paid · {state.lineCount} workers · {formatRm(state.total, { decimals: 2 })}
             {state.missed ? ` · ${state.missed} not paid` : ""}
           </span>
         </p>

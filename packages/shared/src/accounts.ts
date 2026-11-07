@@ -60,6 +60,16 @@ export function workerAccountId(name: string, root: AccountId): AccountId {
   return subAccount(name, root);
 }
 
+/** Pseudonymous lender name, generated randomly by the server, so pool shares name no one (SPEC §8.9). */
+export const LENDER_NAME_PATTERN = /^l-[a-z0-9]{6}$/;
+
+export function lenderAccountId(name: string, root: AccountId): AccountId {
+  if (!LENDER_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid lender name "${name}": expected ${LENDER_NAME_PATTERN}`);
+  }
+  return subAccount(name, root);
+}
+
 function subAccount(name: string, parent: AccountId): AccountId {
   const id = `${name}.${parent}`;
   assertValidAccountId(id);

@@ -48,6 +48,7 @@ export default function LandingPage() {
                 periodLabel={snap.periodLabel}
                 facts={snap.facts}
                 connected
+                canFund={false}
               />
               <div className={styles.table}>
                 <PayLines rows={snap.rows} caption={false} />

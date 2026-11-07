@@ -7,6 +7,8 @@ export type RunState =
   | { kind: "short"; shortfall: Sen }
   | { kind: "ready"; leftAfter: Sen }
   | { kind: "checking" }
+  /** The owner signs the payout intent and the payout rail checks it (SPEC §8.11, R17). */
+  | { kind: "approving" }
   /** `inFlight` is a pay_run call this browser is making now; otherwise a run was left half paid. */
   | { kind: "paying"; paid: number; total: number; runId: number; inFlight: boolean }
   | { kind: "done"; total: Sen; lineCount: number; missed?: number }
@@ -33,6 +35,7 @@ export interface RunFacts {
 /** What the browser is doing right now, on top of the server facts. */
 export interface LocalPhase {
   checking: boolean;
+  approving?: boolean;
   paying: { paid: number; total: number; runId: number } | null;
   rejection: { failure: FailureNote; shortfall?: Sen; atTreasury: Sen } | null;
 }
@@ -45,6 +48,7 @@ export function shortfallOf(f: RunFacts): Sen {
 
 export function deriveRunState(f: RunFacts, local: LocalPhase): RunState {
   if (local.checking) return { kind: "checking" };
+  if (local.approving) return { kind: "approving" };
   if (local.paying) return { kind: "paying", ...local.paying, inFlight: true };
   // A rejection is stale once the treasury moves (for example after Take advance).
   if (local.rejection && local.rejection.atTreasury === f.treasurySen) {
@@ -67,6 +71,8 @@ export function buttonLabel(state: RunState): string {
   switch (state.kind) {
     case "checking":
       return "Checking run…";
+    case "approving":
+      return "Approving payout…";
     case "paying":
       return state.inFlight ? "Paying…" : "Finish paying";
     case "done":

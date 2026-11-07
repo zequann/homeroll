@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { labelAction } from "@/lib/activity";
 import { addedWorkers, newWorkerAccountId } from "@/lib/added-workers";
 import { invoiceAgentDeps, rememberInvoiceResult } from "@/lib/agents";
 import {
@@ -15,12 +16,18 @@ import { checkUploadedInvoice, type UploadOutcome } from "@/lib/agents/upload";
 import { resetDemoEverywhere } from "@/lib/demo-reset";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { getEnv } from "@/lib/env";
+import { addTreasury } from "@/lib/fund/plan";
 import { parseRm, sen, senToUnits } from "@/lib/fx";
+import { adminSigner } from "@/lib/keys";
 import { settleWithMockBank } from "@/lib/mock/bank";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { period } from "@/lib/near/client";
+import { configureRpc } from "@/lib/near/rpc";
+import { approvePayout as approveWithRail, openApproval, sealApproval } from "@/lib/payout";
+import { railFailure } from "@/lib/payout/explain";
+import { approvalSecret, ownerSigns, payoutRail } from "@/lib/payout/server";
 import { toPayLines } from "@/lib/payroll";
-import { payrollAgentSigner, requireSigner } from "@/lib/session";
+import { requireSigner } from "@/lib/session";
 
 /** Everything these actions return is plain data: strings and numbers, never bigint. */
 export type SubmitResult =
@@ -29,7 +36,7 @@ export type SubmitResult =
   | { ok: false; reason: "rejected"; failure: FailureView };
 
 export type PayResult =
-  | { ok: true; paid: number; total: number; done: boolean }
+  | { ok: true; paid: number; total: number; done: boolean; txHash: string }
   | { ok: false; reason: "not-connected" }
   | { ok: false; reason: "rejected"; failure: FailureView };
 
@@ -43,8 +50,11 @@ function refresh() {
   revalidatePath("/worker");
 }
 
+const payrollButton = z.enum(["Run payroll", "Reserve only", "Finish paying"]);
+
 /** Owner presses Run payroll: the payroll agent proposes the October run, the contract checks it whole. */
-export async function submitPayroll(): Promise<SubmitResult> {
+export async function submitPayroll(button: unknown = "Run payroll"): Promise<SubmitResult> {
+  labelAction(payrollButton.parse(button));
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
 
@@ -52,7 +62,7 @@ export async function submitPayroll(): Promise<SubmitResult> {
   const fixtures = getFixtures();
   const payrollPeriod = period(fixtures.company.period);
   const { lines } = await proposePayroll(chain, fixtures, payrollPeriod, Date.now());
-  const result = await chain.submitRun(payrollAgentSigner(), payrollPeriod, lines);
+  const result = await chain.submitRun(session.signer, payrollPeriod, lines);
   refresh();
   if (!result.ok) {
     const failure = await describeFailure(
@@ -67,15 +77,59 @@ export async function submitPayroll(): Promise<SubmitResult> {
   return { ok: true, runId: result.value.runId, lineCount: lines.length };
 }
 
-/** One pay_run call. The browser calls it until `done`. */
-export async function payNextBatch(runId: unknown): Promise<PayResult> {
+export type ApproveResult =
+  /** `approval` is a sealed token the browser hands to each `payNextBatch` (SPEC §8.11). */
+  | { ok: true; intentHash: string; approval: string }
+  | { ok: false; reason: "not-connected" }
+  | { ok: false; reason: "rejected"; failure: FailureView };
+
+/**
+ * The owner approves a reserved run's payout (SPEC §8.11): the payout rail quotes the contract's
+ * reserved lines, the owner signs the NEP-413 payout intent, and the rail checks it (R17).
+ */
+export async function approvePayout(runId: unknown): Promise<ApproveResult> {
+  const id = z.number().int().nonnegative().parse(runId);
+  const session = await requireSigner("owner");
+  if (!session.connected) return { ok: false, reason: "not-connected" };
+  const employer = session.signer.accountId;
+  const result = await approveWithRail(
+    payoutRail(),
+    { employer, period: period(getFixtures().company.period), runId: id },
+    ownerSigns(employer),
+  );
+  refresh();
+  if (!result.ok) return { ok: false, reason: "rejected", failure: railFailure(result.refusal) };
+  return {
+    ok: true,
+    intentHash: result.value.approval.intentHash,
+    approval: sealApproval(result.value.approval, approvalSecret()),
+  };
+}
+
+/**
+ * One pay_run batch, only with a sealed approval of this run's payout intent (R17). The browser
+ * calls it until `done`. The token, not this server's memory, carries the approval.
+ */
+export async function payNextBatch(
+  runId: unknown,
+  approvalToken: unknown,
+  button: unknown = "Run payroll",
+): Promise<PayResult> {
+  labelAction(payrollButton.parse(button));
   const id = z.number().int().nonnegative().parse(runId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
 
   const chain = getChainClient();
   const fixtures = getFixtures();
-  const result = await chain.payRun(payrollAgentSigner(), id);
+  const approval = openApproval(approvalToken, approvalSecret(), Date.now());
+  if (approval?.runId !== id || approval.employer !== session.signer.accountId) {
+    return { ok: false, reason: "rejected", failure: railFailure("not-approved") };
+  }
+  const executed = await payoutRail().execute(approval, session.signer);
+  if (!executed.ok)
+    return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
+  const result = executed.value;
   refresh();
   if (!result.ok) {
     const failure = await describeFailure(chain, fixtures.company.accountId, result.failure);
@@ -87,6 +141,7 @@ export async function payNextBatch(runId: unknown): Promise<PayResult> {
     paid: lines.filter((l) => l.status === "Paid").length,
     total: lines.length,
     done: status !== "Pending",
+    txHash: result.txHash,
   };
 }
 
@@ -97,6 +152,7 @@ export type OwnerCallResult =
 
 /** Cancel run: the owner's key only, the agent's key cannot (SPEC §7.3). */
 export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
+  labelAction("Cancel run");
   const id = z.number().int().nonnegative().parse(runId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -109,10 +165,11 @@ export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
 }
 
 /**
- * Pay missed worker: a one-line run for the same period, through the agent's key (SPEC §8.2). The
- * contract decides: a re-added worker still on hold comes back as ERR_PAYEE_NOT_ACTIVE.
+ * Pay missed worker: a one-line run for the same period. The contract decides. A re-added worker
+ * still on hold comes back as ERR_PAYEE_NOT_ACTIVE.
  */
 export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
+  labelAction("Pay missed worker");
   const account = z.string().parse(accountId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -120,13 +177,28 @@ export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
   const fixtures = getFixtures();
   const lines = toPayLines(fixtures.timesheet.filter((l) => l.accountId === account));
   if (lines.length !== 1) throw new Error("That account has no line on this timesheet");
-  const agent = payrollAgentSigner();
-  const submitted = await chain.submitRun(agent, period(fixtures.company.period), lines);
+  const payrollPeriod = period(fixtures.company.period);
+  const submitted = await chain.submitRun(session.signer, payrollPeriod, lines);
   if (submitted.ok) {
-    const paid = await chain.payRun(agent, submitted.value.runId);
+    // The one-line run is paid like any other: the owner's payout intent first (R17)
+    const employer = session.signer.accountId;
+    const rail = payoutRail();
+    const run = { employer, period: payrollPeriod, runId: submitted.value.runId };
+    const approved = await approveWithRail(rail, run, ownerSigns(employer));
+    if (!approved.ok) {
+      refresh();
+      return { ok: false, reason: "rejected", failure: railFailure(approved.refusal) };
+    }
+    const executed = await rail.execute(approved.value.approval, session.signer);
     refresh();
-    if (paid.ok) return { ok: true };
-    const failure = await describeFailure(chain, fixtures.company.accountId, paid.failure);
+    if (!executed.ok)
+      return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
+    if (executed.value.ok) return { ok: true };
+    const failure = await describeFailure(
+      chain,
+      fixtures.company.accountId,
+      executed.value.failure,
+    );
     return { ok: false, reason: "rejected", failure };
   }
   refresh();
@@ -154,6 +226,7 @@ export type AddPayeeResult = OwnerCallResult | { ok: false; reason: "invalid"; m
 
 /** Add payee: the server picks a random account; the name stays off-chain (rule R13). */
 export async function addPayee(input: unknown): Promise<AddPayeeResult> {
+  labelAction("Add payee");
   const parsed = newPayeeSchema.safeParse(input);
   const capSen = parsed.success ? parseRm(parsed.data.cap) : null;
   if (!parsed.success || capSen === null || capSen <= 0) {
@@ -184,6 +257,7 @@ export async function addPayee(input: unknown): Promise<AddPayeeResult> {
 
 /** Add a removed worker back with their old wage cap. After onboarding the hold applies (R3). */
 export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult> {
+  labelAction("Add back");
   const account = z.string().parse(accountId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -201,6 +275,7 @@ export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult>
 }
 
 export async function removePayee(accountId: unknown): Promise<OwnerCallResult> {
+  labelAction("Remove");
   const account = z.string().parse(accountId);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -221,6 +296,7 @@ export type CheckResult =
  * In this build the "upload" is the demo company's own generated PDF, read through its text layer.
  */
 export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult> {
+  labelAction("Check with agent");
   const invoice = fixtureInvoice(invoiceNumber);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -253,6 +329,7 @@ export async function uploadInvoice(form: FormData): Promise<UploadOutcome> {
 }
 
 export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult> {
+  labelAction("Take advance");
   const invoice = fixtureInvoice(invoiceNumber);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -282,6 +359,7 @@ export type BuyerPaidResult =
 
 /** Mock bank: the buyer pays the invoice in full and escrow settles it on the pool (SPEC §8.6). */
 export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult> {
+  labelAction("Buyer paid");
   const invoice = fixtureInvoice(invoiceNumber);
   const session = await requireSigner("owner");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -290,6 +368,53 @@ export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult
   revalidatePath("/lender");
   if (!receipt) return { ok: false, reason: "refunded" };
   return { ok: true, ref: receipt.ref, ownerGetsSen: receipt.ownerGetsSen };
+}
+
+const FUND_SEN = sen(2_000_000);
+
+/** Adds RM20,000 of testnet tUSDC to this company's payroll treasury. */
+export async function fundTreasury(): Promise<OwnerCallResult> {
+  const session = await requireSigner("owner");
+  if (!session.connected) return { ok: false, reason: "not-connected" };
+  if (getEnv().chainClient !== "near") {
+    return {
+      ok: false,
+      reason: "rejected",
+      failure: {
+        sentence: "Adding tUSDC runs against testnet.",
+        code: "FAKE_CHAIN",
+        ruleCaption: null,
+        shortfallSen: null,
+      },
+    };
+  }
+  const rpc = process.env.NEAR_RPC_URL;
+  if (rpc) configureRpc(rpc);
+  const admin = adminSigner(getEnv().root, process.env.HOMEROLL_ADMIN_PRIVATE_KEY?.trim() ?? null);
+  if (!admin) {
+    return {
+      ok: false,
+      reason: "rejected",
+      failure: {
+        sentence: "The server has no admin key, so it cannot mint tUSDC.",
+        code: "NO_ADMIN",
+        ruleCaption: null,
+        shortfallSen: null,
+      },
+    };
+  }
+  try {
+    await addTreasury(admin, getFixtures().company.accountId, senToUnits(FUND_SEN));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      reason: "rejected",
+      failure: { sentence: message, code: "FUND_FAILED", ruleCaption: null, shortfallSen: null },
+    };
+  }
+  refresh();
+  return { ok: true };
 }
 
 /** Reset demo (SPEC §9.6). In fake mode it restores the fixtures and clears off-chain records. */

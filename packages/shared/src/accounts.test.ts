@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { homerollAccounts, isValidAccountId, workerAccountId } from "./accounts";
+import { homerollAccounts, isValidAccountId, lenderAccountId, workerAccountId } from "./accounts";
 
 describe("homerollAccounts", () => {
   it("builds every account from the root, with the factory on the root itself", () => {
@@ -39,6 +39,19 @@ describe("workerAccountId", () => {
     "rejects %s, which is not a random w-xxxxxx name (R13)",
     (name) => {
       expect(() => workerAccountId(name, "homeroll.testnet")).toThrow("Invalid worker name");
+    },
+  );
+});
+
+describe("lenderAccountId", () => {
+  it("puts a pseudonymous lender under the root", () => {
+    expect(lenderAccountId("l-4f9t2c", "homeroll.testnet")).toBe("l-4f9t2c.homeroll.testnet");
+  });
+
+  it.each(["seri-capital", "w-7k2q9x", "l-4f9t2", "l-4F9T2C"])(
+    "rejects %s, which is not a random l-xxxxxx name (SPEC §8.9)",
+    (name) => {
+      expect(() => lenderAccountId(name, "homeroll.testnet")).toThrow("Invalid lender name");
     },
   );
 });

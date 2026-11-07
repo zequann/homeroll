@@ -1,4 +1,10 @@
-import { type AccountId, isValidAccountId, workerAccountId } from "@homeroll/shared";
+import {
+  type AccountId,
+  isValidAccountId,
+  LENDER_NAME_PATTERN,
+  lenderAccountId,
+  workerAccountId,
+} from "@homeroll/shared";
 import { buyerHash, type InvoiceDocumentInput, invoiceHash } from "@homeroll/shared/invoice";
 import { z } from "zod";
 import companyJson from "./company.json" with { type: "json" };
@@ -72,8 +78,10 @@ const timesheetSchema = z.array(
 );
 
 const lenderSchema = z.object({
+  /** Off-chain only. On-chain the lender is its pseudonymous account (SPEC §8.9). */
   name: z.string(),
-  label: z.string(),
+  accountName: z.string().regex(LENDER_NAME_PATTERN),
+  /** What the lender has already deposited in the fake chain. On testnet the root seeded the pool. */
   depositUsdc: z.string().regex(/^\d+$/),
 });
 
@@ -164,7 +172,7 @@ export function loadFixtures(root: AccountId): Fixtures {
         }),
         buyerHash: buyerHash(i.buyerTin),
       })),
-    lender: { ...lender, accountId: labelledAccount(lender.label, root) },
+    lender: { ...lender, accountId: lenderAccountId(lender.accountName, root) },
     timesheet: toLines(timesheetJson),
     timesheetTampered: toLines(tamperedJson),
   };

@@ -122,16 +122,20 @@ export async function loadCompanySnapshot(
   let agent: ListedAccount;
   let rawEmployer: unknown;
   const workers = new Map<AccountId, AccountPresence>();
-  try {
-    root = await viewAccountState(goal.root);
-    employer = await viewAccountState(goal.employer);
-    agent = await viewAccountState(goal.agent);
-    for (const worker of goal.workers) {
-      workers.set(worker.accountId, presence(await viewAccountState(worker.accountId)));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      root = await viewAccountState(goal.root);
+      employer = await viewAccountState(goal.employer);
+      agent = await viewAccountState(goal.agent);
+      for (const worker of goal.workers) {
+        workers.set(worker.accountId, presence(await viewAccountState(worker.accountId)));
+      }
+      rawEmployer = await viewFunction(goal.payroll, "get_employer", { employer: goal.employer });
+      break;
+    } catch {
+      if (attempt >= 2) return "rpc_unavailable";
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
     }
-    rawEmployer = await viewFunction(goal.payroll, "get_employer", { employer: goal.employer });
-  } catch {
-    return "rpc_unavailable";
   }
   if (root.kind === "absent") return "root_missing";
   const payrollEmployer = employerRecord(rawEmployer);
@@ -330,11 +334,7 @@ export async function seedCompany(input: SeedInput, company: SeedCompany): Promi
 
   const again = await loadCompanySnapshot(goal, input.rpcUrl);
   if (again === "rpc_unavailable" || again === "root_missing") {
-    return {
-      outcome: "blocked",
-      reason: "broadcast_failed",
-      planned: plannedCells(report.schedule),
-    };
+    return { outcome: "blocked", reason: again, planned: plannedCells(report.schedule) };
   }
   // The loader cannot read pool membership, so it passes planInsert.
   // This broadcast sent add_agent and waited until FINAL.

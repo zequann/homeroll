@@ -28,7 +28,9 @@ export type Signer =
   /** escrow.<root>, the mock bank that settles invoices when the buyer pays (SPEC §8.6). */
   | { role: "settler"; accountId: AccountId }
   | { role: "worker"; accountId: AccountId }
-  | { role: "lender"; accountId: AccountId };
+  | { role: "lender"; accountId: AccountId }
+  /** solver.<root>, the mock solver that delivers cross-chain lender deposits (SPEC §8.9). */
+  | { role: "solver"; accountId: AccountId };
 
 export type LineStatus = "Reserved" | "Sent" | "Paid" | "Failed" | "Skipped" | "Cancelled";
 export type RunStatus = "Pending" | "Done" | "Cancelled";
@@ -82,6 +84,16 @@ export interface PoolView {
   cash: Units;
   outstanding: Units;
   feesEarned: Units;
+  /** Shares are not money: a lender's value is shares × (cash + outstanding) / totalShares. */
+  totalShares: bigint;
+  /** R15: a new lender's first deposit must be at least this. */
+  minFirstDeposit: Units;
+}
+/** `pool.get_lender`. Null means the pool has never seen the account (it is a new lender, R15). */
+export interface LenderView {
+  shares: bigint;
+  /** Assets of a withdrawal still being paid out. */
+  pendingAssets: Units | null;
 }
 
 export type KeyPermission =
@@ -122,6 +134,7 @@ export interface ChainClient {
   getRuns(employer: AccountId, period: Period): Promise<RunView[] | null>;
   getInvoice(invoiceKey: string): Promise<InvoiceView | null>;
   getPool(): Promise<PoolView>;
+  getLender(accountId: AccountId): Promise<LenderView | null>;
   ftBalanceOf(accountId: AccountId): Promise<Units>;
   getAccessKeys(accountId: AccountId): Promise<AccessKeyView[]>;
 
@@ -149,6 +162,17 @@ export interface ChainClient {
   settleInvoice(signer: Signer, invoiceKey: string, paid: Units): Promise<Tx<SettleOutcome>>;
   /** Worker transfer to payout.<root> or offramp.<root>. In near mode it goes through the relayer (SPEC §8.3). */
   ftTransfer(signer: Signer, receiverId: AccountId, amount: Units, memo: string): Promise<Tx<null>>;
-  /** SPEC §9.6. Fake restores fixtures; near calls the on-chain dev's /api/demo route. */
+  /**
+   * Mock delivery of a cross-chain deposit (SPEC §8.9): solver.<root> sends tUSDC to a lender's
+   * account. Only `lib/deposit` calls it, after the R16 checks.
+   */
+  deliverFromSolver(lender: AccountId, amount: Units): Promise<Tx<null>>;
+  /**
+   * The lender's `ft_transfer_call(pool, amount, {"deposit":{}})`. `shares: 0n` means the pool
+   * refunded it with no error. A new lender's deposit below the floor fails with
+   * `ERR_DEPOSIT_TOO_SMALL` (R15), read from the receipts as in `settleInvoice`.
+   */
+  depositToPool(signer: Signer, amount: Units): Promise<Tx<{ shares: bigint }>>;
+  /** SPEC §9.6. Fake restores fixtures; near runs provisionDemoCompany. resetDemoEverywhere calls this. */
   resetDemo(): Promise<{ employer: AccountId }>;
 }

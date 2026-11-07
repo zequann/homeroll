@@ -4,6 +4,7 @@ import { type AccountId, homerollAccounts } from "@homeroll/shared";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { labelAction } from "@/lib/activity";
 import { type CashoutDestination, mockDuitNow } from "@/lib/cashout";
 import { getEnv } from "@/lib/env";
 import { type Sen, sen, senToUnits, units } from "@/lib/fx";
@@ -60,6 +61,7 @@ export async function priceSwap(amountSen: unknown): Promise<RemitQuote> {
 
 /** Send home: the quote prices it, the mock partner takes the tokens (SPEC §8.4). */
 export async function sendHome(amountSen: unknown): Promise<SendResult> {
+  labelAction("Send home");
   const amount = sen(amountSchema.parse(amountSen));
   const session = await requireSigner("worker");
   if (!session.connected) return { ok: false, reason: "not-connected" };
@@ -94,6 +96,7 @@ export type CashoutResult = SendResult;
 
 /** Cash out to DuitNow through the mock off-ramp (SPEC §8.5). */
 export async function cashOut(amountSen: unknown, destination: unknown): Promise<CashoutResult> {
+  labelAction("Cash out");
   const amount = sen(amountSchema.parse(amountSen));
   const dest = z.enum(["tng", "bank"]).parse(destination) satisfies CashoutDestination;
   const session = await requireSigner("worker");
