@@ -50,6 +50,14 @@ pnpm install
 CHAIN_CLIENT=fake pnpm dev   # http://localhost:3000, fixture data, no chain needed
 ```
 
+> **Please be patient on testnet.** The hosted demo talks to NEAR testnet through free public RPC endpoints (FastNEAR, dRPC), which are slow and rate-limited. Measured on 9 Nov 2026:
+>
+> - **Reset demo takes about 40–70 seconds.** It creates a new company account, registers 40 payees, adds keys and funds the treasury and pool. Wait until the button shows **Reset demo** again before you press anything else. If it says the RPC is busy, wait a minute and press it again: it picks up where it stopped.
+> - **Each button that writes to the chain takes a few seconds.** A testnet transaction takes about 2 seconds; **Run payroll** sends three (`submit_run`, then two `pay_run` batches of 20), plus the owner's signed approval in between.
+> - **Pages load in about 1 second.**
+>
+> When an endpoint rate-limits (HTTP 429), the app waits and retries, and moves reads to a backup endpoint, so a step can take longer but nothing is sent twice. On the fake chain (`CHAIN_CLIENT=fake`) everything is instant.
+
 Do X → see Y:
 
 1. Open `/` and press **Start the demo** → `/owner` opens as Coffee Factory Sdn Bhd. The treasury shows RM18,400 and payroll is short. There is no wallet to connect: everyone shares the same demo accounts, and each page signs as its own role on the server.
@@ -132,6 +140,7 @@ pnpm demo:reset           # a fresh demo company on testnet, as the Reset demo b
 15. `update_cap` and `withdraw` (SPEC §7.3) are not in the payroll contract yet. The app does not call them.
 16. The app keeps some state in memory and in `apps/web/.data/`, so it runs as one long-lived server (`pnpm --filter web build && pnpm --filter web start`).
 17. The mock invoice model reads this project's invoice template only, so other PDFs are refused.
+18. Speed depends on free testnet RPC tiers. Reset demo takes about 40–70 s and each chain write about 2 s; under rate limits (HTTP 429) the app waits and retries, so steps can take longer. A paid RPC plan would remove the limits.
 
 ## Related work
 
