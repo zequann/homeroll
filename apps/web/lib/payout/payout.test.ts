@@ -7,6 +7,7 @@ import { deriveKey } from "@/lib/keys";
 import { period, type Signer } from "@/lib/near/client";
 import { FakeChainClient } from "@/lib/near/fake";
 import { toPayLines } from "@/lib/payroll";
+import { createMemoryRowStore } from "@/lib/store/rows";
 import {
   approvePayout,
   MOCK_VERIFIER,
@@ -300,5 +301,62 @@ describe("approval tokens: the accepted intent between requests (SPEC §8.11)", 
     const batch = await elsewhere.execute(opened, owner);
     expect(batch.ok && batch.value.ok && batch.value.value.status).toBe("Done");
     expect((await chain.getRuns(run.employer, run.period))?.[0]?.status).toBe("Done");
+  });
+});
+
+describe("a shared payout store: several server instances (Vercel)", () => {
+  async function twoInstances() {
+    const base = await setup();
+    const shared = createMemoryRowStore();
+    const instance = () => {
+      const store = new PayoutStore(shared, () => base.run.employer);
+      const rail = new MockConfidentialRail({
+        chain: base.chain,
+        root: ROOT,
+        store,
+        now: () => NOW,
+      });
+      return { store, rail };
+    };
+    const a = instance();
+    const quote = await a.rail.quote(base.run);
+    if (!quote.ok) throw new Error(quote.refusal);
+    const { depositAddress } = quote.value.quote;
+    const intent = await a.rail.generateIntent({
+      type: "swap_transfer",
+      standard: "nep413",
+      signerId: base.run.employer,
+      depositAddress,
+    });
+    if (!intent.ok) throw new Error(intent.refusal);
+    const signed = await base.signAs(base.ownerKey)(intent.value.intent.payload);
+    return { ...base, instance, a, depositAddress, signed };
+  }
+
+  it("an approval accepted on one instance shows on another, and its replay is refused there", async () => {
+    const { instance, a, depositAddress, signed } = await twoInstances();
+    expect((await a.rail.submitIntent({ type: "swap_transfer", signedData: signed })).ok).toBe(
+      true,
+    );
+    const b = instance();
+    await b.store.load();
+    const status = await b.rail.status(depositAddress);
+    expect(status.ok && status.value.status).toBe("PROCESSING");
+    expect(await b.rail.submitIntent({ type: "swap_transfer", signedData: signed })).toEqual({
+      ok: false,
+      refusal: "nonce-used",
+    });
+  });
+
+  it("R17.2: two instances accepting the same signed intent at once, exactly one wins", async () => {
+    const { instance, signed } = await twoInstances();
+    const b = instance();
+    const c = instance();
+    await Promise.all([b.store.load(), c.store.load()]);
+    const results = await Promise.all(
+      [b, c].map((x) => x.rail.submitIntent({ type: "swap_transfer", signedData: signed })),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, refusal: "nonce-used" }]);
   });
 });

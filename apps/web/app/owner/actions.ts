@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { labelAction } from "@/lib/activity";
-import { addedWorkers, newWorkerAccountId } from "@/lib/added-workers";
+import { loadAddedWorkers, newWorkerAccountId, saveAddedWorker } from "@/lib/added-workers";
 import { invoiceAgentDeps, rememberInvoiceResult } from "@/lib/agents";
 import {
   type InvoiceAgentResult,
@@ -18,7 +18,7 @@ import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { getEnv } from "@/lib/env";
 import { parseRm, sen, senToUnits } from "@/lib/fx";
 import { settleWithMockBank } from "@/lib/mock/bank";
-import { getChainClient, getFixtures } from "@/lib/near";
+import { getChainClient, getFixtures, syncLiveCompany } from "@/lib/near";
 import { period } from "@/lib/near/client";
 import { approvePayout as approveWithRail, openApproval, sealApproval } from "@/lib/payout";
 import { railFailure } from "@/lib/payout/explain";
@@ -46,6 +46,7 @@ const payrollButton = z.enum(["Run payroll", "Reserve only", "Finish paying"]);
 
 /** Owner presses Run payroll: the payroll agent proposes the October run, the contract checks it whole. */
 export async function submitPayroll(button: unknown = "Run payroll"): Promise<SubmitResult> {
+  await syncLiveCompany();
   labelAction(payrollButton.parse(button));
   const signer = demoSigner("owner");
 
@@ -78,11 +79,12 @@ export type ApproveResult =
  * reserved lines, the owner signs the NEP-413 payout intent, and the rail checks it (R17).
  */
 export async function approvePayout(runId: unknown): Promise<ApproveResult> {
+  await syncLiveCompany();
   const id = z.number().int().nonnegative().parse(runId);
   const signer = demoSigner("owner");
   const employer = signer.accountId;
   const result = await approveWithRail(
-    payoutRail(),
+    await payoutRail(),
     { employer, period: period(getFixtures().company.period), runId: id },
     ownerSigns(employer),
   );
@@ -104,6 +106,7 @@ export async function payNextBatch(
   approvalToken: unknown,
   button: unknown = "Run payroll",
 ): Promise<PayResult> {
+  await syncLiveCompany();
   labelAction(payrollButton.parse(button));
   const id = z.number().int().nonnegative().parse(runId);
   const signer = demoSigner("owner");
@@ -114,7 +117,7 @@ export async function payNextBatch(
   if (approval?.runId !== id || approval.employer !== signer.accountId) {
     return { ok: false, reason: "rejected", failure: railFailure("not-approved") };
   }
-  const executed = await payoutRail().execute(approval, signer);
+  const executed = await (await payoutRail()).execute(approval, signer);
   if (!executed.ok)
     return { ok: false, reason: "rejected", failure: railFailure(executed.refusal) };
   const result = executed.value;
@@ -139,6 +142,7 @@ export type OwnerCallResult =
 
 /** Cancel run: the owner's key only, the agent's key cannot (SPEC §7.3). */
 export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
+  await syncLiveCompany();
   labelAction("Cancel run");
   const id = z.number().int().nonnegative().parse(runId);
   const signer = demoSigner("owner");
@@ -155,6 +159,7 @@ export async function cancelPayroll(runId: unknown): Promise<OwnerCallResult> {
  * still on hold comes back as ERR_PAYEE_NOT_ACTIVE.
  */
 export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
+  await syncLiveCompany();
   labelAction("Pay missed worker");
   const account = z.string().parse(accountId);
   const signer = demoSigner("owner");
@@ -167,7 +172,7 @@ export async function payMissed(accountId: unknown): Promise<OwnerCallResult> {
   if (submitted.ok) {
     // The one-line run is paid like any other: the owner's payout intent first (R17)
     const employer = signer.accountId;
-    const rail = payoutRail();
+    const rail = await payoutRail();
     const run = { employer, period: payrollPeriod, runId: submitted.value.runId };
     const approved = await approveWithRail(rail, run, ownerSigns(employer));
     if (!approved.ok) {
@@ -211,6 +216,7 @@ export type AddPayeeResult = OwnerCallResult | { ok: false; reason: "invalid"; m
 
 /** Add payee: the server picks a random account; the name stays off-chain (rule R13). */
 export async function addPayee(input: unknown): Promise<AddPayeeResult> {
+  await syncLiveCompany();
   labelAction("Add payee");
   const parsed = newPayeeSchema.safeParse(input);
   const capSen = parsed.success ? parseRm(parsed.data.cap) : null;
@@ -229,7 +235,7 @@ export async function addPayee(input: unknown): Promise<AddPayeeResult> {
     const failure = await describeFailure(chain, getFixtures().company.accountId, result.failure);
     return { ok: false, reason: "rejected", failure };
   }
-  addedWorkers().set(accountId, {
+  await saveAddedWorker({
     accountId,
     displayName: parsed.data.name,
     role: parsed.data.role,
@@ -241,13 +247,14 @@ export async function addPayee(input: unknown): Promise<AddPayeeResult> {
 
 /** Add a removed worker back with their old wage cap. After onboarding the hold applies (R3). */
 export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult> {
+  await syncLiveCompany();
   labelAction("Add back");
   const account = z.string().parse(accountId);
   const signer = demoSigner("owner");
   const fixtures = getFixtures();
   const capSen =
     fixtures.workers.find((w) => w.accountId === account)?.capSen ??
-    addedWorkers().get(account)?.capSen;
+    (await loadAddedWorkers()).find((w) => w.accountId === account)?.capSen;
   if (capSen === undefined) throw new Error("Unknown worker");
   const chain = getChainClient();
   const result = await chain.addPayee(signer, account, senToUnits(sen(capSen)));
@@ -258,6 +265,7 @@ export async function addPayeeBack(accountId: unknown): Promise<OwnerCallResult>
 }
 
 export async function removePayee(accountId: unknown): Promise<OwnerCallResult> {
+  await syncLiveCompany();
   labelAction("Remove");
   const account = z.string().parse(accountId);
   const signer = demoSigner("owner");
@@ -276,18 +284,20 @@ export type CheckResult = { ok: true; result: InvoiceAgentResult };
  * In this build the "upload" is the demo company's own generated PDF, read through its text layer.
  */
 export async function checkInvoice(invoiceNumber: unknown): Promise<CheckResult> {
+  await syncLiveCompany();
   labelAction("Check with agent");
   const invoice = fixtureInvoice(invoiceNumber);
 
   const deps = invoiceAgentDeps();
   const result = await runInvoiceAgent(deps, await invoiceDocumentFromPdf(deps.fixtures, invoice));
-  rememberInvoiceResult(result, invoice.hash);
+  await rememberInvoiceResult(result, invoice.hash);
   refresh();
   return { ok: true, result };
 }
 
 /** Owner uploads an invoice PDF (SPEC §9.1). See `lib/agents/upload.ts` for what is checked. */
 export async function uploadInvoice(form: FormData): Promise<UploadOutcome> {
+  await syncLiveCompany();
   const file = form.get("file");
   if (!(file instanceof File)) {
     return { ok: false, reason: "not-a-pdf", message: "Choose a PDF invoice to upload." };
@@ -296,13 +306,14 @@ export async function uploadInvoice(form: FormData): Promise<UploadOutcome> {
   const outcome = await checkUploadedInvoice(deps, new Uint8Array(await file.arrayBuffer()));
   if (outcome.ok) {
     const fixture = deps.fixtures.invoices.find((i) => i.number === outcome.result.invoiceNumber);
-    if (fixture) rememberInvoiceResult(outcome.result, fixture.hash);
+    if (fixture) await rememberInvoiceResult(outcome.result, fixture.hash);
   }
   refresh();
   return outcome;
 }
 
 export async function takeAdvance(invoiceNumber: unknown): Promise<AdvanceResult> {
+  await syncLiveCompany();
   labelAction("Take advance");
   const invoice = fixtureInvoice(invoiceNumber);
   const signer = demoSigner("owner");
@@ -332,6 +343,7 @@ export type BuyerPaidResult =
 
 /** Mock bank: the buyer pays the invoice in full and escrow settles it on the pool (SPEC §8.6). */
 export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult> {
+  await syncLiveCompany();
   labelAction("Buyer paid");
   const invoice = fixtureInvoice(invoiceNumber);
   const receipt = await settleWithMockBank(invoice);
@@ -343,6 +355,7 @@ export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult
 
 /** Reset demo (SPEC §9.6). In fake mode it restores the fixtures and clears off-chain records. */
 export async function resetDemo(): Promise<void> {
+  await syncLiveCompany();
   await resetDemoEverywhere();
   revalidatePath("/", "layout");
 }

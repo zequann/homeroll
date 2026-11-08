@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Money } from "@/components/Money";
 import { Segmented } from "@/components/Segmented";
-import { getFixtures } from "@/lib/near";
+import { getFixtures, syncLiveCompany } from "@/lib/near";
 import { loadPayoutPanel } from "@/lib/payout/server";
 import { loadOwnerView } from "@/lib/views/owner";
 import { Activity } from "./_components/Activity";
@@ -31,6 +31,7 @@ export default async function OwnerPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
+  await syncLiveCompany();
   const tab = tabSchema.parse((await searchParams).tab);
   const [view, payout] = await Promise.all([
     loadOwnerView(tab),

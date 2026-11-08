@@ -55,6 +55,7 @@ apps/web/lib/near/  ChainClient interface + FakeChainClient + NearChainClient
 apps/web/lib/intents/ 1Click quote client, shared by Send home and lender deposits
 apps/web/lib/rhea/  read-only Rhea Lend USDC rate (mainnet view call, display only)
 packages/shared/    invoice hash, invoice template + generator, types, error codes, fixture loader (used by app, scripts, tests)
+supabase/           schema.sql: off-chain tables (SPEC §8.7), run once in the Supabase SQL Editor
 fixtures/           synthetic company, 40 workers (pseudonymous accounts), 3 invoices (+ tampered PDF, generated from the template), timesheets
 scripts/            deploy-testnet, seed, demo-reset, attacks/, measure/
 docs/               architecture.md, adr/ (decisions with trade-offs), agents/ (skill config)

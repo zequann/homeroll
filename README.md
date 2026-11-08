@@ -164,3 +164,4 @@ Exact versions, pinned where each is declared.
 | `pdf-lib` (invoice PDFs, pure JS) | 1.17.1 | `packages/shared/package.json` |
 | `@playwright/test` (browser tests) | 1.65.0 | `apps/web/package.json` |
 | `@axe-core/playwright` (WCAG checks) | 4.14.0 | `apps/web/package.json` |
+| Supabase (off-chain rows, optional locally) | free tier, PostgREST over `fetch`, no SDK | `supabase/schema.sql`, `apps/web/lib/store/rows.ts` |

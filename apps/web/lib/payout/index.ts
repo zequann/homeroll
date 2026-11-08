@@ -2,6 +2,7 @@ import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { type AccountId, homerollAccounts } from "@homeroll/shared";
 import { z } from "zod";
 import type { ChainClient, PayLine, Period, RunView, Signer, Tx } from "@/lib/near/client";
+import type { RowStore } from "@/lib/store/rows";
 import {
   intentHashOf,
   type Nep413Payload,
@@ -138,14 +139,60 @@ interface QuoteRecord {
   updatedAt: number;
 }
 
-/** Quotes and used nonces, in memory per server instance (SPEC §18). Reset demo clears it. */
+/**
+ * Quotes and used nonces (SPEC §8.11, §18). The rail reads and edits them in memory; with a shared
+ * row store (`rows`) they are loaded per request and written back on every change, so the
+ * approval and each `pay_run` batch may run on different server instances (Vercel). Without one,
+ * memory only, as the tests use it. Reset demo starts a new scope.
+ */
 export class PayoutStore {
   readonly quotes = new Map<string, QuoteRecord>();
   readonly usedNonces = new Set<string>();
 
-  clear(): void {
+  constructor(
+    private readonly rows: RowStore | null = null,
+    private readonly scope: () => string = () => "",
+  ) {}
+
+  /** Replaces what this instance holds with the shared rows of the current scope. */
+  async load(): Promise<void> {
+    if (!this.rows) return;
+    const [quotes, nonces] = await Promise.all([
+      this.rows.list<QuoteRecord>("payouts", this.scope()),
+      this.rows.list<{ at: number }>("payout_nonces", this.scope()),
+    ]);
+    this.quotes.clear();
+    for (const { key, data } of quotes) this.quotes.set(key, data);
+    this.usedNonces.clear();
+    for (const { key } of nonces) this.usedNonces.add(key);
+  }
+
+  /** Writes one quote record back after the rail changed it. */
+  async save(depositAddress: string): Promise<void> {
+    const record = this.quotes.get(depositAddress);
+    if (this.rows && record)
+      await this.rows.upsert("payouts", this.scope(), depositAddress, record);
+  }
+
+  /** R17.2: marks a nonce used, in one step; false when it already was (on any instance). */
+  async claimNonce(nonce: string, now: number): Promise<boolean> {
+    if (this.usedNonces.has(nonce)) return false;
+    if (this.rows && !(await this.rows.insert("payout_nonces", this.scope(), nonce, { at: now }))) {
+      return false;
+    }
+    this.usedNonces.add(nonce);
+    return true;
+  }
+
+  async clear(): Promise<void> {
     this.quotes.clear();
     this.usedNonces.clear();
+    if (this.rows) {
+      await Promise.all([
+        this.rows.clear("payouts", this.scope()),
+        this.rows.clear("payout_nonces", this.scope()),
+      ]);
+    }
   }
 }
 
@@ -221,6 +268,7 @@ export class MockConfidentialRail implements PayoutRail {
       nearTxHashes: [],
       updatedAt: now,
     });
+    await this.deps.store.save(response.quote.depositAddress);
     return ok(response);
   }
 
@@ -246,6 +294,7 @@ export class MockConfidentialRail implements PayoutRail {
       nonce: newNonce((n) => this.random(n)),
       recipient: MOCK_VERIFIER,
     };
+    await this.deps.store.save(req.depositAddress);
     return ok({
       mock: true,
       intent: { standard: "nep413", payload: record.payload },
@@ -259,10 +308,10 @@ export class MockConfidentialRail implements PayoutRail {
     const signed = parsed.data as SignedData;
     const { store } = this.deps;
     // R17.1: a nonce this rail issued
-    const record = [...store.quotes.values()].find(
-      (r) => r.payload?.nonce === signed.payload.nonce,
-    );
-    if (!record?.payload) return refuse("unknown-intent");
+    const [address, record] = [...store.quotes.entries()].find(
+      ([, r]) => r.payload?.nonce === signed.payload.nonce,
+    ) ?? [null, null];
+    if (!address || !record?.payload) return refuse("unknown-intent");
     // R17.2: each nonce once, so a signed intent cannot be replayed
     if (store.usedNonces.has(signed.payload.nonce)) return refuse("nonce-used");
     // R17.3: before the deadline
@@ -279,10 +328,14 @@ export class MockConfidentialRail implements PayoutRail {
     const lines = await this.reservedLines(record.run);
     if (!lines || !sameLines(lines, record.lines)) return refuse("run-changed");
 
-    store.usedNonces.add(signed.payload.nonce);
+    // R17.2 again, as one step, so two instances cannot both accept the same signed intent
+    if (!(await store.claimNonce(signed.payload.nonce, this.deps.now()))) {
+      return refuse("nonce-used");
+    }
     record.status = "PROCESSING";
     record.intentHash = intentHashOf(signed.payload);
     record.updatedAt = this.deps.now();
+    await store.save(address);
     return ok({
       mock: true,
       intentHash: record.intentHash,
@@ -349,6 +402,7 @@ export class MockConfidentialRail implements PayoutRail {
       record.nearTxHashes.push(paid.txHash);
       record.status = statusOf(paid.value);
       record.updatedAt = this.deps.now();
+      await this.deps.store.save(approval.depositAddress);
     }
     return ok(paid);
   }

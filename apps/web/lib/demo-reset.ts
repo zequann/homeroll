@@ -1,8 +1,8 @@
-import { addedWorkers } from "@/lib/added-workers";
-import { invoiceResults } from "@/lib/agents";
+import { clearAddedWorkers } from "@/lib/added-workers";
+import { clearInvoiceResults } from "@/lib/agents";
 import { getMockLedger } from "@/lib/mock/ledger";
 import { getChainClient } from "@/lib/near";
-import { payoutStore } from "@/lib/payout/server";
+import { clearPayouts } from "@/lib/payout/server";
 import { resetFakeRelay } from "@/lib/worker-transfer";
 
 /**
@@ -11,11 +11,11 @@ import { resetFakeRelay } from "@/lib/worker-transfer";
  */
 export async function resetDemoEverywhere(): Promise<{ employer: string }> {
   const result = await getChainClient().resetDemo();
-  invoiceResults().clear();
-  addedWorkers().clear();
-  getMockLedger().clear();
+  await clearInvoiceResults();
+  await clearAddedWorkers();
+  await getMockLedger().clear();
   resetFakeRelay();
   // A fresh company reuses run id 0: an approval for the old run must not pay the new one (R17)
-  payoutStore().clear();
+  await clearPayouts();
   return result;
 }

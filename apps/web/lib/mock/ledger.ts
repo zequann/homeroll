@@ -1,10 +1,11 @@
+import { randomInt } from "node:crypto";
 import type { Sen } from "@/lib/fx";
 import { getFixtures } from "@/lib/near";
-import { cacheForEmployer, type EmployerCache } from "@/lib/near/demo-company";
+import { type RowStore, rowStore } from "@/lib/store/rows";
 
 /**
- * Receipts from the mock partners (SPEC §8.6, the `mock_ledger` table of §8.7). In memory until
- * Supabase is wired; kept on globalThis so dev hot reload does not drop it. Synthetic references only.
+ * Receipts from the mock partners (SPEC §8.6, the `mock_ledger` table of §8.7): Supabase when
+ * configured, memory otherwise (lib/store/rows). Synthetic references only.
  */
 
 export type MockReceipt =
@@ -45,37 +46,31 @@ export type MockReceipt =
     };
 
 export interface MockLedger {
-  record<R extends MockReceipt>(receipt: Omit<R, "ref">, prefix: string): R;
-  list(): MockReceipt[];
-  clear(): void;
+  record<R extends MockReceipt>(receipt: Omit<R, "ref">, prefix: string): Promise<R>;
+  /** Newest first. */
+  list(): Promise<MockReceipt[]>;
+  find(ref: string): Promise<MockReceipt | null>;
+  clear(): Promise<void>;
 }
 
-function createMockLedger(): MockLedger {
-  let receipts: MockReceipt[] = [];
-  let next = 1;
+/** Receipts of one demo employer, in the shared `mock_ledger` table (SPEC §8.7). */
+export function createMockLedger(store: RowStore, scope: string): MockLedger {
   return {
-    record(receipt, prefix) {
-      const ref = `${prefix}-SYN-${String(next++).padStart(6, "0")}`;
+    async record(receipt, prefix) {
+      // Random, not a counter: several server instances write receipts at once
+      const ref = `${prefix}-SYN-${String(randomInt(1_000_000)).padStart(6, "0")}`;
       const full = { ...receipt, ref } as unknown as MockReceipt;
-      receipts = [full, ...receipts];
+      await store.upsert("mock_ledger", scope, ref, full);
       return full as never;
     },
-    list: () => receipts,
-    clear() {
-      receipts = [];
+    async list() {
+      return (await store.list<MockReceipt>("mock_ledger", scope)).map((r) => r.data);
     },
+    find: (ref) => store.get<MockReceipt>("mock_ledger", scope, ref),
+    clear: () => store.clear("mock_ledger", scope),
   };
 }
 
-const globalForLedger = globalThis as unknown as {
-  __homerollMockLedger?: EmployerCache<MockLedger>;
-};
-
 export function getMockLedger(): MockLedger {
-  globalForLedger.__homerollMockLedger ??= new Map();
-  return cacheForEmployer(
-    globalForLedger.__homerollMockLedger,
-    getFixtures().company.accountId,
-    createMockLedger,
-  );
+  return createMockLedger(rowStore(), getFixtures().company.accountId);
 }

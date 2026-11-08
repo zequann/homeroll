@@ -26,7 +26,7 @@ export async function settleWithMockBank(invoice: Invoice): Promise<BankReceipt 
   if (!result.value.settled || !before?.advance || !before.fee) return null;
   // What the owner receives rounds down, so what the pool keeps rounds up (SPEC §10)
   const owedSen = unitsToSen(units(before.advance + before.fee), "up");
-  return getMockLedger().record<BankReceipt>(
+  return await getMockLedger().record<BankReceipt>(
     {
       mock: true,
       kind: "bank",

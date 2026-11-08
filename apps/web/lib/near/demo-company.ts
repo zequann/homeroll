@@ -30,6 +30,7 @@ import {
 import { adminSigner, deriveKey } from "../keys.ts";
 import type { SeedCompany } from "../seed/plan.ts";
 import { type SeedInput, seedCompany } from "../seed/shell.ts";
+import { type RowStore, rowStore } from "../store/rows.ts";
 import { configureRpc, transferNear, viewAccount } from "./rpc.ts";
 
 type DemoEmployerId = AccountId;
@@ -82,10 +83,13 @@ function isCompany(value: unknown): value is DemoCompany {
   return Object.values(row.buyerTinByInvoice).every((tin) => typeof tin === "string");
 }
 
-function readLedger(): DemoLedger | null {
+function readLedgerFile(): DemoLedger | null {
   const path = ledgerPath();
   if (!existsSync(path)) return null;
-  const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+  return parseLedger(JSON.parse(readFileSync(path, "utf8")) as unknown);
+}
+
+function parseLedger(raw: unknown): DemoLedger {
   if (typeof raw !== "object" || raw === null) throw new Error("demo ledger is unreadable");
   const row = raw as Record<string, unknown>;
   if (typeof row.root !== "string") throw new Error("demo ledger is unreadable");
@@ -100,10 +104,14 @@ function readLedger(): DemoLedger | null {
   };
 }
 
-function writeLedger(ledger: DemoLedger): void {
+function assertLedger(ledger: DemoLedger): void {
   if (ledger.live && ledger.provisioning && ledger.live.employer === ledger.provisioning.employer) {
     throw new Error("demo ledger cannot set the same employer on live and provisioning");
   }
+}
+
+function writeLedgerFile(ledger: DemoLedger): void {
+  assertLedger(ledger);
   const path = ledgerPath();
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
@@ -114,7 +122,7 @@ function writeLedger(ledger: DemoLedger): void {
   renameSync(tmp, path);
 }
 
-async function withLedgerLock<T>(fn: () => Promise<T>): Promise<T> {
+async function withLedgerFileLock<T>(fn: () => Promise<T>): Promise<T> {
   const path = lockPath();
   mkdirSync(dirname(path), { recursive: true });
   for (;;) {
@@ -139,6 +147,92 @@ async function withLedgerLock<T>(fn: () => Promise<T>): Promise<T> {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+}
+
+// --- The ledger in the shared store (Supabase): every server instance sees the live company ------
+// On Vercel the file system is read-only and each request may run on another instance, so with a
+// shared store the ledger is one row of `demo_company`, and a lock row replaces the lock file.
+
+const LEDGER_TABLE = "demo_company";
+const LEDGER_SCOPE = "ledger";
+// A reset can take minutes (§9.6). Past this, a lock from a crashed reset is taken over.
+const LEDGER_LOCK_TTL_MS = 330_000;
+const LEDGER_LOCK_POLL_MS = 1_000;
+
+function sharedRows(): RowStore | null {
+  const store = rowStore();
+  return store.kind === "supabase" ? store : null;
+}
+
+const globalForLedger = globalThis as unknown as {
+  /** The shared ledger as this instance last read it; undefined = never read. */
+  __homerollLiveLedger?: DemoLedger | null;
+  __homerollLiveLedgerWarned?: boolean;
+};
+
+async function readLedger(): Promise<DemoLedger | null> {
+  const rows = sharedRows();
+  if (!rows) return readLedgerFile();
+  const raw = await rows.get<unknown>(LEDGER_TABLE, LEDGER_SCOPE, "ledger");
+  const ledger = raw === null ? null : parseLedger(raw);
+  globalForLedger.__homerollLiveLedger = ledger;
+  return ledger;
+}
+
+async function writeLedger(ledger: DemoLedger): Promise<void> {
+  const rows = sharedRows();
+  if (!rows) return writeLedgerFile(ledger);
+  assertLedger(ledger);
+  await rows.upsert(LEDGER_TABLE, LEDGER_SCOPE, "ledger", ledger);
+  globalForLedger.__homerollLiveLedger = ledger;
+}
+
+async function withLedgerLock<T>(fn: () => Promise<T>): Promise<T> {
+  const rows = sharedRows();
+  if (!rows) return withLedgerFileLock(fn);
+  for (;;) {
+    const now = Date.now();
+    if (
+      await rows.insert(LEDGER_TABLE, LEDGER_SCOPE, "lock", { until: now + LEDGER_LOCK_TTL_MS })
+    ) {
+      break;
+    }
+    const held = await rows.get<{ until: number }>(LEDGER_TABLE, LEDGER_SCOPE, "lock");
+    if (held && held.until < now) {
+      await rows.remove(LEDGER_TABLE, LEDGER_SCOPE, "lock");
+      continue;
+    }
+    // Another reset is running: wait for it, as a second press of Reset demo does
+    await new Promise((resolve) => setTimeout(resolve, LEDGER_LOCK_POLL_MS));
+  }
+  try {
+    return await fn();
+  } finally {
+    await rows.remove(LEDGER_TABLE, LEDGER_SCOPE, "lock");
+  }
+}
+
+/**
+ * Reads which demo company is live from the shared store, so `getFixtures()` in the rest of this
+ * request (synchronous, everywhere) uses it. Call it first in every page, server action and API
+ * route. A no-op on the fake chain and without a shared store (the ledger file is read directly).
+ */
+export async function syncLiveCompany(): Promise<void> {
+  if (getEnv().chainClient !== "near" || !sharedRows()) return;
+  await readLedger();
+}
+
+function liveLedger(): DemoLedger | null {
+  if (!sharedRows()) return readLedgerFile();
+  const ledger = globalForLedger.__homerollLiveLedger;
+  if (ledger === undefined) {
+    if (!globalForLedger.__homerollLiveLedgerWarned) {
+      globalForLedger.__homerollLiveLedgerWarned = true;
+      console.warn("[demo] live company not loaded: call syncLiveCompany() first in this request");
+    }
+    return null;
+  }
+  return ledger;
 }
 
 const RECLAIM_KEEP_YOCTO = 10n ** 23n;
@@ -252,7 +346,7 @@ export async function provisionDemoCompany(
   assertSeedReady(input);
 
   return withLedgerLock(async () => {
-    const existing = readLedger();
+    const existing = await readLedger();
     if (existing && existing.root !== input.root) {
       throw new Error("demo ledger root does not match NEAR_ROOT_ACCOUNT");
     }
@@ -267,7 +361,7 @@ export async function provisionDemoCompany(
       company = mintDemoCompany(base, ledger);
       ledger = { ...ledger, provisioning: company };
       // The id is on disk before any chain call, so a crash retries this employer.
-      writeLedger(ledger);
+      await writeLedger(ledger);
     }
 
     let seedReport = await seedCompany(input, seedPayload(company, base));
@@ -278,7 +372,7 @@ export async function provisionDemoCompany(
     ) {
       company = mintDemoCompany(base, { ...ledger, provisioning: company });
       ledger = { ...ledger, provisioning: company };
-      writeLedger(ledger);
+      await writeLedger(ledger);
       seedReport = await seedCompany(input, seedPayload(company, base));
     }
 
@@ -304,14 +398,14 @@ export async function provisionDemoCompany(
     await runFund(input, company.employer, base);
 
     ledger = { root: input.root, live: company, provisioning: null };
-    writeLedger(ledger);
+    await writeLedger(ledger);
     return { employer: company.employer };
   });
 }
 
 export function overlayLiveCompany(base: Fixtures): Fixtures {
   if (getEnv().chainClient !== "near") return base;
-  const ledger = readLedger();
+  const ledger = liveLedger();
   if (!ledger || ledger.root !== base.root || !ledger.live) return base;
   const live = ledger.live;
   return {

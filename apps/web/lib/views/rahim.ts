@@ -1,5 +1,5 @@
 import { homerollAccounts } from "@homeroll/shared";
-import { getActivityLog } from "@/lib/activity";
+import { recentActivity } from "@/lib/activity";
 import { getEnv } from "@/lib/env";
 import { formatUsdc, type Sen, units, unitsToSen } from "@/lib/fx";
 import { getChainClient, getFixtures } from "@/lib/near";
@@ -26,9 +26,10 @@ export async function loadRahimView(): Promise<RahimView> {
   const payrollPeriod: Period = period(fixtures.company.period);
   const { offramp } = homerollAccounts(getEnv().root);
 
-  const [balance, runs] = await Promise.all([
+  const [balance, runs, activity] = await Promise.all([
     chain.ftBalanceOf(rahim.accountId),
     chain.getRuns(fixtures.company.accountId, payrollPeriod),
+    recentActivity(),
   ]);
   const paid = runs
     ?.flatMap((r) => r.lines)
@@ -39,8 +40,7 @@ export async function loadRahimView(): Promise<RahimView> {
     balanceSen: unitsToSen(balance, "nearest"),
     usdcHint: `≈ ${formatUsdc(balance)}`,
     wage: paid ? { label: WAGE_LABEL, amountSen: unitsToSen(paid.amount, "nearest") } : null,
-    sends: getActivityLog()
-      .list()
+    sends: activity
       .filter((a) => a.method === "ft_transfer" && a.from === rahim.accountId && !a.failure)
       .map((a) => ({
         id: a.id,

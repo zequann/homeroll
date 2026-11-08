@@ -1,6 +1,7 @@
 import { Bank, PaperPlaneTilt } from "@phosphor-icons/react/ssr";
 import { ButtonLink } from "@/components/Button";
 import { RollingMoney } from "@/components/RollingMoney";
+import { syncLiveCompany } from "@/lib/near";
 import { loadRahimView } from "@/lib/views/rahim";
 import { ActivityList, type WorkerActivityItem } from "./_components/ActivityList";
 import { RefreshWhileVisible } from "./_components/RefreshWhileVisible";
@@ -9,6 +10,7 @@ import styles from "./_components/worker.module.css";
 export const metadata = { title: "Worker · Homeroll" };
 
 export default async function WorkerPage() {
+  await syncLiveCompany();
   const rahim = await loadRahimView();
   const items: WorkerActivityItem[] = [
     ...rahim.sends.map((s) => ({

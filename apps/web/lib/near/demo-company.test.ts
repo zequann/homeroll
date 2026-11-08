@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadFixtures } from "@homeroll/fixtures";
 import { buyerHash, invoiceHash } from "@homeroll/shared/invoice";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SeedInput } from "@/lib/seed/shell";
+import { createMemoryRowStore, type RowStore, resetRowStoreForTests } from "@/lib/store/rows";
 
 const ROOT = "homeroll-test.testnet";
 
@@ -258,5 +259,54 @@ describe("provisionDemoCompany", () => {
     fundConvergesImmediately();
     await provisionDemoCompany(seedInput());
     expect(seedCompany.mock.calls[1]?.[1]?.employer).toBe(firstEmployer);
+  });
+});
+
+describe("the live company in a shared store (Supabase, Vercel)", () => {
+  const g = globalThis as unknown as Record<string, unknown>;
+  let shared: RowStore;
+  beforeEach(() => {
+    shared = { ...createMemoryRowStore(), kind: "supabase" };
+    resetRowStoreForTests(shared);
+    delete g.__homerollLiveLedger;
+    delete g.__homerollLiveLedgerWarned;
+  });
+  afterEach(() => {
+    resetRowStoreForTests();
+    delete g.__homerollLiveLedger;
+  });
+
+  it("writes the ledger as a row, not a file, and another instance reads it before use", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    fundConvergesImmediately();
+    const base = loadFixtures(ROOT);
+    const { provisionDemoCompany } = await loadDemoModule();
+    const { employer } = await provisionDemoCompany(seedInput());
+    expect(existsSync(ledgerFile)).toBe(false);
+    expect(await shared.get("demo_company", "ledger", "ledger")).toMatchObject({
+      live: { employer },
+    });
+
+    // A cold instance: nothing in memory until the request loads the ledger
+    delete g.__homerollLiveLedger;
+    process.env.CHAIN_CLIENT = "near";
+    process.env.NEAR_ROOT_ACCOUNT = ROOT;
+    vi.resetModules();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { getFixtures, syncLiveCompany } = await import("./index.ts");
+    expect(getFixtures().company.accountId).toBe(base.company.accountId);
+    expect(warn).toHaveBeenCalledOnce();
+    await syncLiveCompany();
+    expect(getFixtures().company.accountId).toBe(employer);
+    warn.mockRestore();
+  });
+
+  it("takes over a lock a crashed reset left behind, and releases its own", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    fundConvergesImmediately();
+    await shared.insert("demo_company", "ledger", "lock", { until: Date.now() - 1 });
+    const { provisionDemoCompany } = await loadDemoModule();
+    await provisionDemoCompany(seedInput());
+    expect(await shared.get("demo_company", "ledger", "lock")).toBeNull();
   });
 });

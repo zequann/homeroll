@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ButtonLink } from "@/components/Button";
 import { formatRm } from "@/lib/fx";
 import { getMockLedger } from "@/lib/mock/ledger";
+import { syncLiveCompany } from "@/lib/near";
 import styles from "../../_components/worker.module.css";
 
 export const metadata = { title: "Cashed out · Homeroll" };
@@ -14,13 +15,12 @@ export default async function CashedOutPage({
 }: {
   searchParams: Promise<{ ref?: string }>;
 }) {
+  await syncLiveCompany();
   const ref = z
     .string()
     .regex(/^DN-SYN-\d{6}$/)
     .safeParse((await searchParams).ref).data;
-  const receipt = getMockLedger()
-    .list()
-    .find((r) => r.ref === ref);
+  const receipt = ref ? await getMockLedger().find(ref) : null;
   if (receipt?.kind !== "duitnow") redirect("/worker");
 
   return (

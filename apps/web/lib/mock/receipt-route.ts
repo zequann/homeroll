@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { syncLiveCompany } from "@/lib/near";
 import { getMockLedger, type MockReceipt } from "./ledger";
 
 const bodySchema = z.object({ txHash: z.string().min(1).max(128) }).strict();
@@ -13,9 +14,10 @@ export async function receiptResponse(
 ): Promise<Response> {
   const body = bodySchema.safeParse(await request.json().catch(() => null));
   if (!body.success) return Response.json({ mock: true, reason: "invalid_body" }, { status: 400 });
-  const receipt = getMockLedger()
-    .list()
-    .find((r) => r.kind === kind && r.txHash === body.data.txHash);
+  await syncLiveCompany();
+  const receipt = (await getMockLedger().list()).find(
+    (r) => r.kind === kind && r.txHash === body.data.txHash,
+  );
   if (!receipt) return Response.json({ mock: true, reason: "no_receipt" }, { status: 404 });
   return Response.json(receipt);
 }

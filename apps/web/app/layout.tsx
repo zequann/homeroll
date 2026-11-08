@@ -11,6 +11,10 @@ export const metadata: Metadata = {
     "Invoice advances for Malaysian SMEs, guarded payroll for foreign workers, and cheaper money sent home.",
 };
 
+// Reset demo creates a whole company on testnet and can run past a minute. Vercel Hobby with
+// Fluid compute allows up to 300 seconds; server actions take this from the page they run on.
+export const maxDuration = 300;
+
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#F4F5F4" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

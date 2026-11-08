@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
 import { invoicePdf } from "@/lib/agents/invoice-agent";
-import { getFixtures } from "@/lib/near";
+import { getFixtures, syncLiveCompany } from "@/lib/near";
 
 /** The demo company's invoices as downloads (SPEC §9.1). Synthetic documents, public on purpose. */
 export async function GET(request: NextRequest, ctx: { params: Promise<{ number: string }> }) {
+  await syncLiveCompany();
   const { number } = await ctx.params;
   const fixtures = getFixtures();
   const invoice = fixtures.invoices.find((i) => i.number === number);
