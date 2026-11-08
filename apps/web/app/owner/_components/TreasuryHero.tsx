@@ -2,11 +2,13 @@
 
 import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
+import { useActionTransition } from "@/components/useActionTransition";
 import { formatRm, type Sen } from "@/lib/fx";
 import { approvePayout, cancelPayroll, payNextBatch, submitPayroll } from "../actions";
 import styles from "./owner.module.css";
@@ -43,7 +45,9 @@ export function TreasuryHero(props: TreasuryHeroProps) {
   } = props;
   const router = useRouter();
   const [local, setLocal] = useState<LocalPhase>(IDLE);
-  const [pending, start] = useTransition();
+  const [pending, startAction, failed] = useActionTransition();
+  // A thrown action (busy RPC) clears the in-flight label; the page re-reads what went through.
+  const start = (task: () => Promise<void>) => startAction(task, () => setLocal(IDLE));
   const state = deriveRunState(facts, local);
 
   /** The owner's payout intent first (SPEC §8.11). The sealed approval, or null when refused. */
@@ -150,6 +154,7 @@ export function TreasuryHero(props: TreasuryHeroProps) {
         </p>
 
         <StatusLine state={state} facts={facts} bufferSen={bufferSen} />
+        <ActionFailed show={failed} />
 
         <div className={styles.heroActions}>
           <Button variant="primary" disabled={!buttonEnabled(state, pending)} onClick={run}>

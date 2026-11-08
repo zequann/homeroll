@@ -1,10 +1,11 @@
 "use client";
 
 import { ArrowCounterClockwise } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { resetDemo } from "@/app/owner/actions";
 import { Button } from "./Button";
 import styles from "./ResetDemoButton.module.css";
+import { useActionTransition } from "./useActionTransition";
 
 const ARM_WINDOW_MS = 4000;
 
@@ -14,8 +15,8 @@ const ARM_WINDOW_MS = 4000;
  */
 export function ResetDemoButton({ compact = false }: { compact?: boolean }) {
   const [armed, setArmed] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [pending, start] = useTransition();
+  // Always re-reads the page after, so the fresh company shows without a reload
+  const [pending, start, failed] = useActionTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
@@ -28,15 +29,8 @@ export function ResetDemoButton({ compact = false }: { compact?: boolean }) {
     }
     if (timer.current) clearTimeout(timer.current);
     setArmed(false);
-    setFailed(false);
-    start(async () => {
-      try {
-        await resetDemo();
-      } catch {
-        // A failed reset resumes the same company next time, so pressing again is safe
-        setFailed(true);
-      }
-    });
+    // A failed reset resumes the same company next time, so pressing again is safe
+    start(() => resetDemo());
   };
 
   const label = armed ? "Press again to reset" : "Reset demo";

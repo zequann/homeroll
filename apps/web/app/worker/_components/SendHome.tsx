@@ -1,9 +1,11 @@
 "use client";
 
 import { PaperPlaneTilt } from "@phosphor-icons/react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { useActionTransition } from "@/components/useActionTransition";
 import { formatRm, formatTaka, parseRm, type Sen } from "@/lib/fx";
 import { BENCHMARKS, benchmarkTaka, type RemitQuote, SampleQuote } from "@/lib/remit";
 import { priceSwap, sendHome } from "../actions";
@@ -22,7 +24,7 @@ export function SendHome({
   liveQuotes: boolean;
 }) {
   const [text, setText] = useState("800");
-  const [pending, start] = useTransition();
+  const [pending, start, failed] = useActionTransition();
   const [error, setError] = useState<string | null>(null);
 
   const amount = parseRm(text);
@@ -118,6 +120,7 @@ export function SendHome({
         sending USD 200.
       </p>
 
+      <ActionFailed show={failed} />
       {error ? (
         <p className={`t-caption ${styles.error}`} role="alert">
           {error}

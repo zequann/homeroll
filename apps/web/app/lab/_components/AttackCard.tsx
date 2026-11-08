@@ -1,11 +1,12 @@
 "use client";
 
 import { ShieldCheck } from "@phosphor-icons/react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
+import { useActionTransition } from "@/components/useActionTransition";
 import type { AttackId } from "@/lib/attacks";
 import { type AttackResult, runAttack } from "../actions";
 import styles from "./lab.module.css";
@@ -26,7 +27,7 @@ export function AttackCard({
   /** A document this attack uses. */
   download?: { href: string; label: string };
 }) {
-  const [pending, start] = useTransition();
+  const [pending, start] = useActionTransition();
   const [result, setResult] = useState<AttackResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 

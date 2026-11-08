@@ -1,9 +1,10 @@
 "use client";
 
 import { UploadSimple } from "@phosphor-icons/react";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { useActionTransition } from "@/components/useActionTransition";
 import type { InvoiceAgentResult } from "@/lib/agents/invoice-agent";
 import { MAX_INVOICE_BYTES } from "@/lib/agents/upload-limits";
 import { uploadInvoice } from "../actions";
@@ -13,7 +14,7 @@ import styles from "./owner.module.css";
 /** Upload → live check list → grade (SPEC §9.1). The offer appears on the invoice's own row. */
 export function InvoiceUpload() {
   const input = useRef<HTMLInputElement>(null);
-  const [pending, start] = useTransition();
+  const [pending, start] = useActionTransition();
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<InvoiceAgentResult | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);

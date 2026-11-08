@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
+import { useActionTransition } from "@/components/useActionTransition";
 import type { FailureView } from "@/lib/describe-failure";
 import { payMissed } from "../actions";
 
 /** Pay missed worker: a one-line run for the same period (SPEC §9.1). */
 export function PayMissed({ accountId }: { accountId: string }) {
-  const [pending, start] = useTransition();
+  const [pending, start, failed] = useActionTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
   return (
     <div>
@@ -27,6 +29,7 @@ export function PayMissed({ accountId }: { accountId: string }) {
       >
         Pay missed worker
       </Button>
+      <ActionFailed show={failed} />
       {failure ? (
         <ContractErrorNote
           sentence={failure.sentence}
