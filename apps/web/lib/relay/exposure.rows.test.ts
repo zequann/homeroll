@@ -45,3 +45,26 @@ describe("relayer claims shared by several server instances (R12, Vercel)", () =
     expect(await shared.get("relay_claims", "relay", `lock:${WORKER}`)).toBeNull();
   });
 });
+
+describe("Reset demo forgets a worker's daily limits (SPEC §9.6)", () => {
+  it("lets the worker send again after a reset, on every instance", async () => {
+    const shared = createMemoryRowStore();
+    const a = ExposureLog.rows(shared);
+    await a.withWorker(WORKER, (book) => {
+      book.hold({ blob: "blob-1" as BlobId, day: DAY, amount: CAP, maxBlockHeight: 100n });
+      book.land("blob-1" as BlobId, "tx-1");
+    });
+    expect(await holdIfUnderCap(a, "blob-2", 800_000_000n)).toBe(false);
+
+    await a.forget(WORKER);
+    expect(await holdIfUnderCap(ExposureLog.rows(shared), "blob-3", 800_000_000n)).toBe(true);
+  });
+
+  it("keeps a claim still in flight, so a transfer being relayed during the reset still counts", async () => {
+    const log = ExposureLog.memory();
+    await holdIfUnderCap(log, "in-flight", 3_500_000_000n);
+    await log.forget(WORKER);
+    expect(await holdIfUnderCap(log, "after", 800_000_000n)).toBe(false);
+    expect(await holdIfUnderCap(log, "small", 500_000_000n)).toBe(true);
+  });
+});

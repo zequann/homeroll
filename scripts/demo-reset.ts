@@ -5,7 +5,12 @@ import { loadEnvLocal, readSeedEnv } from "../apps/web/lib/seed/shell.ts";
 const envFile = loadEnvLocal("apps/web/.env.local");
 // With Supabase configured, the live company is a row there (as on Vercel), so a reset from the
 // command line switches the hosted app too. Without it, the ledger file as before.
-for (const key of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "NEAR_ROOT_ACCOUNT"] as const) {
+for (const key of [
+  "SUPABASE_URL",
+  "SUPABASE_SECRET_KEY",
+  "NEAR_ROOT_ACCOUNT",
+  "NEAR_RPC_FALLBACK_URLS",
+] as const) {
   if (process.env[key] === undefined && envFile[key] !== undefined) process.env[key] = envFile[key];
 }
 const parsed = readSeedEnv({ ...envFile, ...process.env });

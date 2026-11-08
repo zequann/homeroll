@@ -506,6 +506,8 @@ One interface for everything the app reads from or writes to NEAR, so the app ca
 - **`FakeChainClient`** (day 1): returns fixture data and simulates the contract rules and error codes from §7. The app dev builds all screens against it.
 - **`NearChainClient`** (from ~7 Nov): calls the real testnet contracts.
 - Switch with `CHAIN_CLIENT=fake|near`. Both must pass the same test suite for the shared methods.
+- **Transaction waits.** Every send waits until the transaction and all its receipts have executed (`EXECUTED_OPTIMISTIC`), not until the block is final: about 1.8 s a transaction on testnet against 3.9 s (measured 9 Nov 2026). Cross-contract calls are done before the next read. near-api-js reads the next nonce at the same optimistic state and re-signs only on `InvalidNonce`, when the first was never included, so nothing runs twice. Checks that re-read the chain right after sending (seed, fund) read up to 3 times, 1 s apart, before calling a step unfinished. The relayer still returns once the delegate action is included (§8.3).
+- **RPC rate limits.** Free testnet RPCs refuse bursts with HTTP 429. Every RPC request (reads, view calls, transaction sends) retries a 429 with a growing wait (0.5 s doubling, at most 4 s, 7 tries) and, for reads, moves to the next endpoint in `NEAR_RPC_FALLBACK_URLS` first, skipping a throttled endpoint for 30 s (`lib/near/rpc-retry.ts`). Transactions use `NEAR_RPC_URL` only and wait there: dRPC's free plan answers a `send_tx` that runs past 2 s with 408, then 500 on every resend (measured 9 Nov 2026). A retry resends the same signed bytes, so it cannot pay twice. Reads also move on when an endpoint is unreachable or answers 500. near-api-js's own retries are cut to 4 (~4 s) from 12 (~95 s). Contract errors are never retried. Seed snapshots read their 44 accounts 4 at a time.
 
 ### 8.9 Private deposit from any chain (P1) — `lib/deposit`
 
@@ -658,6 +660,7 @@ Every run of the demo uses up the demo company: an invoice can be advanced once 
 3. Adds the owner's key and a fresh payroll agent function-call key (fresh allowance). Both stay on the server.
 4. Gives the company a fresh synthetic seller TIN and buyer TINs, and generates its invoices (the three in §4 plus the tampered one) from the invoice template, with matching mock MyInvois records.
 5. Every visitor now sees the new company: the demo is shared (§9).
+6. Empties Rahim's wallet: before funding, his leftover tUSDC goes back to `<root>` with an `ft_transfer` signed by his demo key, the activity log is cleared, and his relayer daily limits (§8.3) start over, keeping only a transfer still in flight, so his phone shows RM0.00 and no old sends, and Send home works again the same day. Only Rahim's, because only his phone is shown; the other 39 keep their test balances. If this transfer fails, the reset still finishes.
 
 Rate-limited per visitor, with a daily cap overall. Rough cost ≈0.3 testnet NEAR and ~15 s per reset (estimate). `pnpm demo:reset` runs the same steps from the command line. The same template generator produces the committed fixtures, so local runs, CI and the hosted app use identical files. It needs a pure-JS PDF library (no native build).
 
@@ -885,6 +888,7 @@ Follow `HACKATHON.md` for the exact field rules.
 14. The demo pays October 2026 (`fixtures/company.json`). The contract only accepts the current or previous month (R14), so from 1 December 2026 Run payroll needs that period moved forward.
 15. `update_cap` and `withdraw` (§7.3) are not in the payroll contract yet. The app does not call them.
 16. The app keeps some state in memory and in `apps/web/.data/`: the live demo company, relayer limits, activity log, mock receipts and payout quotes. Run it as one long-lived server (`pnpm --filter web build && pnpm --filter web start`). Serverless hosting would need that state moved to storage such as Supabase (§8.7).
+17. Speed depends on free testnet RPC tiers (FastNEAR, dRPC). Reset demo takes about 40–70 s and each chain write about 2 s (measured 9 Nov 2026, §8.8); under rate limits the app waits and retries. The README asks judges to wait for Reset demo to finish.
 
 ### Future roadmap
 

@@ -29,6 +29,28 @@ import {
   type SeedReport,
 } from "./plan.ts";
 
+/** Account reads in flight at once while taking a snapshot. */
+const SNAPSHOT_CONCURRENCY = 4;
+
+/** `items.map(fn)` with at most `limit` calls in flight, results in input order. */
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const lane = async () => {
+    for (let i = next++; i < items.length; i = next++) out[i] = await fn(items[i] as T);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return out;
+}
+
+/** Reads after a broadcast before it counts as unfinished, and the pause between them. */
+const SETTLE_READS = 3;
+const SETTLE_WAIT_MS = 1_000;
+
 export type SeedInput = {
   readonly network: "testnet";
   readonly root: AccountId;
@@ -124,13 +146,19 @@ export async function loadCompanySnapshot(
   const workers = new Map<AccountId, AccountPresence>();
   for (let attempt = 0; ; attempt++) {
     try {
-      root = await viewAccountState(goal.root);
-      employer = await viewAccountState(goal.employer);
-      agent = await viewAccountState(goal.agent);
-      for (const worker of goal.workers) {
-        workers.set(worker.accountId, presence(await viewAccountState(worker.accountId)));
-      }
-      rawEmployer = await viewFunction(goal.payroll, "get_employer", { employer: goal.employer });
+      // 44 accounts, SNAPSHOT_CONCURRENCY at a time: one by one took ~30 s a snapshot, and a reset
+      // takes two. More at once draws FastNEAR 429s; those reads move to a fallback (rpc-retry.ts).
+      const ids = [goal.root, goal.employer, goal.agent, ...goal.workers.map((w) => w.accountId)];
+      const [states, rawEmployerRead] = await Promise.all([
+        mapLimit(ids, SNAPSHOT_CONCURRENCY, (id) => viewAccountState(id)),
+        viewFunction(goal.payroll, "get_employer", { employer: goal.employer }),
+      ]);
+      [root, employer, agent] = states as [ListedAccount, ListedAccount, ListedAccount];
+      workers.clear();
+      goal.workers.forEach((worker, i) => {
+        workers.set(worker.accountId, presence(states[i + 3] as ListedAccount));
+      });
+      rawEmployer = rawEmployerRead;
       break;
     } catch {
       if (attempt >= 2) return "rpc_unavailable";
@@ -169,7 +197,7 @@ async function signAdmin(action: AdminSeedAction, admin: AdminSigner): Promise<s
           fundYocto: action.fundYocto,
         }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return txHash;
     }
@@ -177,7 +205,7 @@ async function signAdmin(action: AdminSeedAction, admin: AdminSigner): Promise<s
       const { txHash } = await broadcastAdmin(
         adminStep({ kind: "topUp", account: action.accountId, fundYocto: action.fundYocto }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return txHash;
     }
@@ -214,7 +242,7 @@ async function signAdmin(action: AdminSeedAction, admin: AdminSigner): Promise<s
           factory: action.factory,
         }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return txHash;
     }
@@ -332,18 +360,25 @@ export async function seedCompany(input: SeedInput, company: SeedCompany): Promi
     };
   }
 
-  const again = await loadCompanySnapshot(goal, input.rpcUrl);
-  if (again === "rpc_unavailable" || again === "root_missing") {
-    return { outcome: "blocked", reason: again, planned: plannedCells(report.schedule) };
+  // Sends wait until executed, not final (rpc.ts TxWait), so a load-balanced RPC node a block
+  // behind can still show the old state for a moment: read again before calling it unfinished.
+  let judged: ReturnType<typeof planSeed> | null = null;
+  for (let read = 0; read < SETTLE_READS; read++) {
+    if (read > 0) await new Promise((resolve) => setTimeout(resolve, SETTLE_WAIT_MS));
+    const again = await loadCompanySnapshot(goal, input.rpcUrl);
+    if (again === "rpc_unavailable" || again === "root_missing") {
+      return { outcome: "blocked", reason: again, planned: plannedCells(report.schedule) };
+    }
+    // The loader cannot read pool membership, so it passes planInsert.
+    // This broadcast sent add_agent and waited until it executed.
+    // Planning that follow-up as planInsert would stay ready on addAgent.
+    judged = planSeed(
+      report.schedule.admin.addAgent ? { ...again, agentAllowlist: "member" } : again,
+      goal,
+    );
+    if (judged.outcome === "converged") return { outcome: "converged", txHashes };
   }
-  // The loader cannot read pool membership, so it passes planInsert.
-  // This broadcast sent add_agent and waited until FINAL.
-  // Planning that follow-up as planInsert would stay ready on addAgent.
-  const judged = planSeed(
-    report.schedule.admin.addAgent ? { ...again, agentAllowlist: "member" } : again,
-    goal,
-  );
-  if (judged.outcome === "converged") return { outcome: "converged", txHashes };
+  if (!judged) throw new Error("unreachable: SETTLE_READS is at least 1");
   if (judged.outcome === "refused") return judged;
   if (judged.outcome === "ready") {
     return {

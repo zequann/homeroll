@@ -603,7 +603,7 @@ export async function replaceDeployedPayroll(
   if (plan.step === null) return { outcome: "unchanged" };
   const admin = adminSigner(input.root, input.adminSecretKey);
   if (!admin) return { outcome: "blocked", reason: "admin_key_missing" };
-  const sent = await broadcastAdmin(adminStep(plan.step), admin, "FINAL");
+  const sent = await broadcastAdmin(adminStep(plan.step), admin, "EXECUTED");
   return { outcome: "replaced", txHash: sent.txHash };
 }
 
