@@ -38,7 +38,7 @@ export function mockDuitNow(ledger: MockLedger, now: () => number = Date.now): C
     async execute(transfer, offramp, amountSen, destination) {
       const { txHash } = await transfer(offramp, senToUnits(amountSen), `cash-out:${destination}`);
       const dest = CASHOUT_DESTINATIONS.find((d) => d.key === destination);
-      return ledger.record<Extract<MockReceipt, { kind: "duitnow" }>>(
+      return await ledger.record<Extract<MockReceipt, { kind: "duitnow" }>>(
         {
           mock: true,
           kind: "duitnow",

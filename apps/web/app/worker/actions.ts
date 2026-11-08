@@ -10,7 +10,7 @@ import { getEnv } from "@/lib/env";
 import { type Sen, sen, senToUnits, units } from "@/lib/fx";
 import { quoteSwapLeg } from "@/lib/intents";
 import { getMockLedger } from "@/lib/mock/ledger";
-import { getChainClient, getFixtures } from "@/lib/near";
+import { getChainClient, getFixtures, syncLiveCompany } from "@/lib/near";
 import { MockRoute, quoteWithSwap, type RemitQuote, SampleQuote } from "@/lib/remit";
 import { demoSigner } from "@/lib/session";
 import { workerTransfer } from "@/lib/worker-transfer";
@@ -56,11 +56,13 @@ async function priceSendHome(amount: Sen): Promise<RemitQuote> {
 
 /** For the Send home screen, as the amount changes. Asks for a dry-run quote; moves nothing. */
 export async function priceSwap(amountSen: unknown): Promise<RemitQuote> {
+  await syncLiveCompany();
   return priceSendHome(sen(amountSchema.parse(amountSen)));
 }
 
 /** Send home: the quote prices it, the mock partner takes the tokens (SPEC §8.4). */
 export async function sendHome(amountSen: unknown): Promise<SendResult> {
+  await syncLiveCompany();
   labelAction("Send home");
   const amount = sen(amountSchema.parse(amountSen));
   const signer = demoSigner("worker");
@@ -93,6 +95,7 @@ export type CashoutResult = SendResult;
 
 /** Cash out to DuitNow through the mock off-ramp (SPEC §8.5). */
 export async function cashOut(amountSen: unknown, destination: unknown): Promise<CashoutResult> {
+  await syncLiveCompany();
   labelAction("Cash out");
   const amount = sen(amountSchema.parse(amountSen));
   const dest = z.enum(["tng", "bank"]).parse(destination) satisfies CashoutDestination;

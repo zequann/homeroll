@@ -19,7 +19,7 @@ import { getEnv } from "@/lib/env";
 import { explain, explainProtocol } from "@/lib/errors/explain";
 import { formatUsdc } from "@/lib/fx";
 import { listTokens, quoteDepositLeg } from "@/lib/intents";
-import { getChainClient } from "@/lib/near";
+import { getChainClient, syncLiveCompany } from "@/lib/near";
 import type { TxFailure } from "@/lib/near/client";
 import { demoSigner } from "@/lib/session";
 
@@ -71,6 +71,7 @@ async function price(raw: unknown): Promise<DepositQuote | null> {
 
 /** For the deposit form, as the amount changes. A dry-run quote; moves nothing. */
 export async function priceLenderDeposit(raw: unknown): Promise<DepositQuoteView | null> {
+  await syncLiveCompany();
   const quote = await price(raw);
   if (!quote) return null;
   const { assetKey, amount } = requestSchema.parse(raw);
@@ -108,6 +109,7 @@ function failureSentence(failure: TxFailure): string {
 
 /** Private deposit (SPEC §8.9): mock routing and delivery, then a real pool deposit. */
 export async function depositPrivately(raw: unknown): Promise<DepositResult> {
+  await syncLiveCompany();
   labelAction("Deposit privately");
   // Only the demo lender's pseudonymous account, never an account the browser names
   const lender = demoSigner("lender").accountId;

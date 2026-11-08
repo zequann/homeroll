@@ -1,13 +1,14 @@
 import { type WorkerNameRecord, workerName } from "@homeroll/fixtures";
 import type { AccountId } from "@homeroll/shared";
-import { addedWorkers } from "@/lib/added-workers";
+import { cachedAddedWorker } from "@/lib/added-workers";
 
 /**
  * Off-chain name lookup (SPEC §12, rule R13). The chain only ever sees `w-xxxxxx.<root>`.
- * Call this at render time on the server; never put a name in an account ID, event, log or error.
+ * Call this at render time on the server, after `loadAddedWorkers()` for owner-added workers.
+ * Never put a name in an account ID, event, log or error.
  */
 export function nameOf(accountId: AccountId): WorkerNameRecord | null {
-  const added = addedWorkers().get(accountId);
+  const added = cachedAddedWorker(accountId);
   if (added) return { displayName: added.displayName, possessive: "their" };
   return workerName(accountId);
 }

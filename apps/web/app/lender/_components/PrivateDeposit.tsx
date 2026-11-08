@@ -82,8 +82,7 @@ export function PrivateDeposit({
     {
       label: "Confidential routing · Confidential Intents",
       badge: "Mock routing",
-      caption:
-        "In production your wallet pays into a Confidential Intents account, so nobody can link it to your pool shares. It runs on mainnet only.",
+      caption: null,
     },
     {
       label: "Delivered as tUSDC on testnet",
@@ -142,7 +141,7 @@ export function PrivateDeposit({
               {s.label}
               {s.badge ? <Badge>{s.badge}</Badge> : null}
             </span>
-            <span className="t-caption ink-3">{s.caption}</span>
+            {s.caption ? <span className="t-caption ink-3">{s.caption}</span> : null}
           </li>
         ))}
       </ol>

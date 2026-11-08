@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AccountId } from "@homeroll/shared";
+import type { RowStore } from "@/lib/store/rows";
 
 export type BlobId = string & { readonly __blob: "BlobId" };
 export type UtcDay = string & { readonly __utcDay: "UtcDay" };
@@ -98,12 +99,22 @@ function deserialize(raw: string): Claim[] {
   }));
 }
 
+/** One row per worker in the shared `relay_claims` table, plus a lock row while a request checks. */
+const ROWS_SCOPE = "relay";
+const LOCK_TTL_MS = 15_000;
+const LOCK_WAIT_MS = 100;
+const LOCK_GIVE_UP_MS = 20_000;
+
 export class ExposureLog {
   private readonly memory = new Map<AccountId, Claim[]>();
   private readonly locks = new Map<AccountId, Promise<void>>();
   readonly inFlight = new Set<BlobId>();
 
-  private constructor(private readonly dir: string | null) {}
+  private constructor(
+    private readonly dir: string | null,
+    private readonly rows: RowStore | null = null,
+    private readonly clock: () => number = Date.now,
+  ) {}
 
   static memory(): ExposureLog {
     return new ExposureLog(null);
@@ -113,7 +124,43 @@ export class ExposureLog {
     return new ExposureLog(dir);
   }
 
+  /**
+   * Shared by every server instance (Vercel): the daily cap and rate limit (R12) must count the
+   * transfers other instances relayed too. A lock row makes each worker's check-and-hold one step
+   * across instances, as the in-process lock does within one.
+   */
+  static rows(store: RowStore, clock: () => number = Date.now): ExposureLog {
+    return new ExposureLog(null, store, clock);
+  }
+
+  private async acquire(worker: AccountId): Promise<void> {
+    if (!this.rows) return;
+    const key = `lock:${worker}`;
+    const start = this.clock();
+    for (;;) {
+      const now = this.clock();
+      if (await this.rows.insert("relay_claims", ROWS_SCOPE, key, { until: now + LOCK_TTL_MS }))
+        return;
+      // A request that crashed holding the lock must not block this worker for good
+      const held = await this.rows.get<{ until: number }>("relay_claims", ROWS_SCOPE, key);
+      if (held && held.until < now) {
+        await this.rows.remove("relay_claims", ROWS_SCOPE, key);
+        continue;
+      }
+      if (now - start > LOCK_GIVE_UP_MS) throw new Error("relay lock busy");
+      await new Promise((resolve) => setTimeout(resolve, LOCK_WAIT_MS));
+    }
+  }
+
+  private async release(worker: AccountId): Promise<void> {
+    if (this.rows) await this.rows.remove("relay_claims", ROWS_SCOPE, `lock:${worker}`);
+  }
+
   private async load(worker: AccountId): Promise<Claim[]> {
+    if (this.rows) {
+      const stored = await this.rows.get<StoredClaim[]>("relay_claims", ROWS_SCOPE, worker);
+      return stored ? deserialize(JSON.stringify(stored)) : [];
+    }
     if (this.dir === null) {
       return this.memory.get(worker) ?? [];
     }
@@ -126,6 +173,15 @@ export class ExposureLog {
   }
 
   private async save(worker: AccountId, claims: Claim[]): Promise<void> {
+    if (this.rows) {
+      await this.rows.upsert(
+        "relay_claims",
+        ROWS_SCOPE,
+        worker,
+        JSON.parse(serialize(claims)) as StoredClaim[],
+      );
+      return;
+    }
     if (this.dir === null) {
       this.memory.set(worker, claims);
       return;
@@ -149,11 +205,16 @@ export class ExposureLog {
     );
     await prev;
     try {
-      const claims = await this.load(worker);
-      const book = createBook(claims);
-      const result = fn(book);
-      await this.save(worker, claims);
-      return result;
+      await this.acquire(worker);
+      try {
+        const claims = await this.load(worker);
+        const book = createBook(claims);
+        const result = fn(book);
+        await this.save(worker, claims);
+        return result;
+      } finally {
+        await this.release(worker);
+      }
     } finally {
       release();
     }

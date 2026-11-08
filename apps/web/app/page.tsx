@@ -1,11 +1,13 @@
 import { ButtonLink } from "@/components/Button";
+import { syncLiveCompany } from "@/lib/near";
 import { loadLandingSnapshot } from "@/lib/views/landing";
 import { PayLines } from "./owner/_components/PayLines";
 import { TreasuryHero } from "./owner/_components/TreasuryHero";
 import { WorkerPreview } from "./owner/_components/WorkerPreview";
 import styles from "./page.module.css";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  await syncLiveCompany();
   const snap = loadLandingSnapshot();
   return (
     <main className="page">
@@ -40,7 +42,6 @@ export default function LandingPage() {
                 bufferSen={snap.bufferSen}
                 periodLabel={snap.periodLabel}
                 facts={snap.facts}
-                canFund={false}
               />
               <div className={styles.table}>
                 <PayLines rows={snap.rows} caption={false} actions={false} />

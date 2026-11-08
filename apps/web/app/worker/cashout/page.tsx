@@ -1,5 +1,6 @@
 import { CaretLeft } from "@phosphor-icons/react/ssr";
 import { ButtonLink } from "@/components/Button";
+import { syncLiveCompany } from "@/lib/near";
 import { loadRahimView } from "@/lib/views/rahim";
 import { CashOut } from "../_components/CashOut";
 import styles from "../_components/worker.module.css";
@@ -7,6 +8,7 @@ import styles from "../_components/worker.module.css";
 export const metadata = { title: "Cash out · Homeroll" };
 
 export default async function CashOutPage() {
+  await syncLiveCompany();
   const rahim = await loadRahimView();
 
   return (

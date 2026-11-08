@@ -2,25 +2,34 @@ import type { AccountId } from "@homeroll/shared";
 import { demoKey, serverSecret } from "@/lib/demo-keys";
 import { getEnv } from "@/lib/env";
 import { type Sen, units, unitsToSen } from "@/lib/fx";
-import { getChainClient } from "@/lib/near";
+import { getChainClient, getFixtures } from "@/lib/near";
+import { rowStore } from "@/lib/store/rows";
 import { MockConfidentialRail, type OneClickStatus, PayoutStore } from "./index";
 import { type Nep413Payload, type SignedData, signNep413 } from "./nep413";
 
-// One store per server process, kept on globalThis so dev hot reload does not drop approvals.
-const globalForPayout = globalThis as unknown as { __homerollPayoutStore?: PayoutStore };
-
-export function payoutStore(): PayoutStore {
-  globalForPayout.__homerollPayoutStore ??= new PayoutStore();
-  return globalForPayout.__homerollPayoutStore;
+/**
+ * A fresh store per request, loaded from the shared rows (Supabase, or memory locally). Never one
+ * per process: two requests on one instance would overwrite each other's in-memory records.
+ */
+function newPayoutStore(): PayoutStore {
+  return new PayoutStore(rowStore(), () => getFixtures().company.accountId);
 }
 
-export function payoutRail(): MockConfidentialRail {
+export async function payoutRail(
+  store: PayoutStore = newPayoutStore(),
+): Promise<MockConfidentialRail> {
+  await store.load();
   return new MockConfidentialRail({
     chain: getChainClient(),
     root: getEnv().root,
-    store: payoutStore(),
+    store,
     now: Date.now,
   });
+}
+
+/** Reset demo: the old company's quotes and nonces. */
+export async function clearPayouts(): Promise<void> {
+  await newPayoutStore().clear();
 }
 
 /** The owner's NEP-413 signature, made with the owner's demo key behind "Demo mode" (D7). */
@@ -39,13 +48,14 @@ export interface PayoutPanelView {
 }
 
 export async function loadPayoutPanel(employer: AccountId): Promise<PayoutPanelView | null> {
-  const rail = payoutRail();
+  const store = newPayoutStore();
+  const rail = await payoutRail(store);
   const address = rail.latestApproved(employer);
   if (!address) return null;
   const status = await rail.status(address);
   if (!status.ok) return null;
   const { swapDetails, quoteResponse } = status.value;
-  const message = JSON.parse(payoutStore().quotes.get(address)?.payload?.message ?? "{}") as {
+  const message = JSON.parse(store.quotes.get(address)?.payload?.message ?? "{}") as {
     intents?: unknown[];
   };
   return {

@@ -88,7 +88,7 @@ export const MockRoute = {
       senToUnits(quote.amountSen),
       `send-home:${quote.corridor}`,
     );
-    const receipt = ledger.record<Extract<MockReceipt, { kind: "payout" }>>(
+    const receipt = await ledger.record<Extract<MockReceipt, { kind: "payout" }>>(
       {
         mock: true,
         kind: "payout",

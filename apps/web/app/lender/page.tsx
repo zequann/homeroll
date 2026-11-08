@@ -2,7 +2,7 @@ import { depositAssets, sharesValue } from "@/lib/deposit";
 import { getEnv } from "@/lib/env";
 import { formatUsdc, units } from "@/lib/fx";
 import { listTokens } from "@/lib/intents";
-import { getChainClient, getFixtures } from "@/lib/near";
+import { getChainClient, getFixtures, syncLiveCompany } from "@/lib/near";
 import { PrivateDeposit } from "./_components/PrivateDeposit";
 import styles from "./lender.module.css";
 
@@ -12,6 +12,7 @@ const pct = (bps: bigint) => `${bps / 100n}.${String(bps % 100n).padStart(2, "0"
 
 /** Pool numbers in USDC. USDC is the only currency on this page, with no RM hint. */
 export default async function LenderPage() {
+  await syncLiveCompany();
   const chain = getChainClient();
   const { lender } = getFixtures();
   const live = getEnv().intentsQuotes === "live";

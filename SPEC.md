@@ -497,6 +497,8 @@ Only for off-chain, mutable things. On-chain stores hashes, pseudonymous account
 | `activity` | Tx hash, actor, method, result, error code — feeds the activity log |
 | `mock_ledger` | Mock partner receipts (payout, DuitNow, bank) |
 
+**Built:** `workers` (owner-added workers), `invoices` (agent results), `activity`, `mock_ledger`, plus `payouts` and `payout_nonces` (§8.11), `relay_claims` (the relayer's daily claims, §8.5) and `demo_company` (which demo company is live, §9.6), all created by `supabase/schema.sql`. `demo_company` replaces the `companies` and `demo_sessions` rows above: every visitor shares one live company (§9). Each has one shape, `(scope, key) → data jsonb`, with `scope` = the demo employer, so a Reset demo starts on empty rows. The server talks to them through `lib/store/rows.ts` (PostgREST over `fetch`, no SDK; the `sb_secret_` key goes in the `apikey` header only). With no `SUPABASE_URL`, the same code keeps the rows in memory and the live company and relayer claims in `.data/` files, as local dev and the tests do. Two rules make it safe on several server instances (Vercel): every page, server action and API route first calls `syncLiveCompany()`, so the synchronous `getFixtures()` sees the live company; and anything that must happen once (a payout nonce, a relayer check-and-hold, a Reset demo) takes an insert-only row that fails for the second caller, with a time limit so a crashed request's lock is taken over.
+
 ### 8.8 Chain client — `lib/near/client.ts`
 
 One interface for everything the app reads from or writes to NEAR, so the app can be built before the contracts are deployed.
@@ -596,7 +598,7 @@ interface PayoutRail {
 
 R17 is checked by the rail, not by the contract. In this build `pay_run` still moves the money, so the contract's run is the backstop: an approved intent can only release lines the contract already reserved, and a paid run cannot be paid again (`ERR_RUN_COMPLETE`). In production the signed intent is what moves the confidential balances, so these checks are the guard. Used nonces and quotes live in memory per server instance; the sealed approval does not (§18).
 
-**What an outsider sees** (the "This demo vs Production" toggle, §9.1):
+**What an outsider sees** (for the pitch and Q&A; the app does not show this table):
 
 | Step | This demo (testnet) | Production (Confidential Intents) |
 |---|---|---|
@@ -619,7 +621,7 @@ Labelled "Owner / HR": in P0 the owner also does HR (D13).
 - **Invoices:** upload → live check list (4 checks) → grade card → advance offer (amount, fee, what pool gets back, what owner gets) → accept (signed by owner). The current demo company's invoices are offered as downloads.
 - **Payroll:** timesheet preview (40 lines with names, wage cap column) → "Run payroll" → the contract checks the run → the owner approves the payout intent (NEP-413, §8.11) → per-line status → result. "Reserve only" submits the run without paying, so the owner can still change it. "Pay missed worker" submits a one-line run for the same period. "Cancel run" while lines are still unsent. Errors from the contract shown with a plain-English explanation.
 - **Workers:** payee list (name + pseudonymous account); "Add payee" shows the 48-hour hold countdown.
-- **Confidential payout panel** (under the treasury, §8.11): badge **"Confidential layer: simulated"**. It shows the payout status, the intent hash and each `pay_run` hash with a NearBlocks link. Each payout hash is captioned "Simulated. In production this settles on NEAR's private shard.", and each link "Testnet transaction, publicly visible." A collapsed **"What an outsider sees: this demo and production"** table shows both cases side by side (§8.11 table).
+- **Confidential payout panel** (under the treasury, §8.11): badge **"Confidential layer: simulated"**. It shows the payout status, the intent hash and each `pay_run` hash with a NearBlocks link. The badge names what is simulated; the deployed page shows no "this demo vs production" explanations.
 - **Agent keys:** shows each function-call key's receiver, methods and allowance, read from chain (`view_access_key_list`). This screen *is* the "why NEAR" slide.
 - **Activity:** every tx with actor, method, result, link to the testnet explorer.
 - **Demo mode label** in the toolbar: the owner's key is held by the server (D7).

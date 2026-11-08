@@ -1,8 +1,8 @@
 import { homerollAccounts } from "@homeroll/shared";
 import type { RunFacts } from "@/app/owner/_components/run-state";
-import { getActivityLog } from "@/lib/activity";
-import { addedWorkers } from "@/lib/added-workers";
-import { invoiceResults } from "@/lib/agents";
+import { recentActivity } from "@/lib/activity";
+import { loadAddedWorkers } from "@/lib/added-workers";
+import { loadInvoiceResults } from "@/lib/agents";
 import { type AdvanceOffer, type InvoiceAgentResult, offerFor } from "@/lib/agents/invoice-agent";
 import { proposePayroll } from "@/lib/agents/payroll";
 import { getEnv } from "@/lib/env";
@@ -139,19 +139,33 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
 
   // Each chain read once per page, and only what the open tab shows (free RPCs rate-limit bursts)
   const none = Promise.resolve([] as AccessKeyView[]);
-  const [employerView, runs, payeeViews, ownerKeys, agentKeys, invoiceViews, pool] =
-    await Promise.all([
-      chain.getEmployer(employer),
-      chain.getRuns(employer, payrollPeriod),
-      chain.getPayees(employer),
-      tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
-      tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
-      tab === "invoices"
-        ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
-        : Promise.resolve(fixtures.invoices.map(() => null)),
-      // The Invoices tab's figures; no other tab pays for this read
-      tab === "invoices" ? chain.getPool() : Promise.resolve(null),
-    ]);
+  const [
+    employerView,
+    runs,
+    payeeViews,
+    ownerKeys,
+    agentKeys,
+    invoiceViews,
+    pool,
+    added,
+    results,
+    activityRows,
+  ] = await Promise.all([
+    chain.getEmployer(employer),
+    chain.getRuns(employer, payrollPeriod),
+    chain.getPayees(employer),
+    tab === "agent-keys" ? chain.getAccessKeys(employer) : none,
+    tab === "agent-keys" ? chain.getAccessKeys(accounts.agent) : none,
+    tab === "invoices"
+      ? Promise.all(fixtures.invoices.map((i) => chain.getInvoice(i.hash)))
+      : Promise.resolve(fixtures.invoices.map(() => null)),
+    // The Invoices tab's figures; no other tab pays for this read
+    tab === "invoices" ? chain.getPool() : Promise.resolve(null),
+    // Off-chain: the owner's added workers, so their names resolve below (lib/names)
+    loadAddedWorkers(),
+    tab === "invoices" ? loadInvoiceResults() : Promise.resolve(new Map()),
+    tab === "activity" ? recentActivity() : Promise.resolve([]),
+  ]);
   if (!employerView) throw new Error(`The chain does not know ${employer}`);
 
   // The line status of a worker is their line in the newest run that has one.
@@ -207,7 +221,7 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
     };
   };
   const payees: PayeeRow[] = [
-    ...[...addedWorkers().values()].map((w) => toPayeeRow(w.accountId, w.role, w.capSen)),
+    ...added.map((w) => toPayeeRow(w.accountId, w.role, w.capSen)),
     ...fixtures.workers.map((w) => toPayeeRow(w.accountId, w.role, sen(w.capSen))),
   ];
 
@@ -244,7 +258,6 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
         : null,
   };
 
-  const results = invoiceResults();
   const invoices: InvoiceRow[] = fixtures.invoices.map((inv, i) => {
     const onChain = invoiceViews[i] ?? null;
     const grade = onChain?.grade ?? null;
@@ -290,24 +303,22 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
       : null,
     invoices,
     keys: [...agentKeysFor(ownerKeys), ...agentKeysFor(agentKeys)],
-    activity: getActivityLog()
-      .list()
-      .map((a) => ({
-        id: a.id,
-        when: time.format(a.at),
-        button: a.action,
-        method: a.method,
-        from: truncateMiddle(a.from),
-        to: truncateMiddle(a.to),
-        usdc: a.amount === null ? null : formatUsdc(units(a.amount)),
-        rmHint: a.amount === null ? null : unitsToSen(units(a.amount), "nearest"),
-        failure: a.failure,
-        txHash: a.txHash,
-        explorerUrl:
-          chain.network === "testnet" && a.txHash
-            ? `https://testnet.nearblocks.io/txns/${a.txHash}`
-            : null,
-      })),
+    activity: activityRows.map((a) => ({
+      id: a.id,
+      when: time.format(a.at),
+      button: a.action,
+      method: a.method,
+      from: truncateMiddle(a.from),
+      to: truncateMiddle(a.to),
+      usdc: a.amount === null ? null : formatUsdc(units(a.amount)),
+      rmHint: a.amount === null ? null : unitsToSen(units(a.amount), "nearest"),
+      failure: a.failure,
+      txHash: a.txHash,
+      explorerUrl:
+        chain.network === "testnet" && a.txHash
+          ? `https://testnet.nearblocks.io/txns/${a.txHash}`
+          : null,
+    })),
   };
 }
 

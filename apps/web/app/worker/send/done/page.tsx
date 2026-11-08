@@ -5,6 +5,7 @@ import { Badge } from "@/components/Badge";
 import { ButtonLink } from "@/components/Button";
 import { formatRm, formatTaka, sen } from "@/lib/fx";
 import { getMockLedger } from "@/lib/mock/ledger";
+import { syncLiveCompany } from "@/lib/near";
 import { quoteWithSwap, SampleQuote } from "@/lib/remit";
 import styles from "../../_components/worker.module.css";
 
@@ -15,6 +16,7 @@ export default async function SentPage({
 }: {
   searchParams: Promise<{ rm?: string; ref?: string }>;
 }) {
+  await syncLiveCompany();
   const params = await searchParams;
   const parsed = z.coerce.number().int().positive().max(100_000_000).safeParse(params.rm);
   // Only a mock ledger reference is shown back; anything else in the URL is dropped
@@ -24,9 +26,7 @@ export default async function SentPage({
     .safeParse(params.ref).data;
   if (!parsed.success) redirect("/worker");
   // The receipt holds the swap price actually used. Without one, fall back to a labelled sample.
-  const receipt = getMockLedger()
-    .list()
-    .find((r) => r.ref === ref);
+  const receipt = ref ? await getMockLedger().find(ref) : null;
   const quote =
     receipt?.kind === "payout"
       ? quoteWithSwap(receipt.amountSen, receipt.swapBps, receipt.swapSource)

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getFixtures } from "@/lib/near";
+import { getFixtures, syncLiveCompany } from "@/lib/near";
 import { period } from "@/lib/near/client";
 import { badRequest, jsonBody, railResponse } from "@/lib/payout/http";
 import { payoutRail } from "@/lib/payout/server";
@@ -14,6 +14,7 @@ const body = z.object({
 
 /** Mock 1Click `POST /v0/quote` in confidential mode (SPEC §8.11). Reads the run; moves nothing. */
 export async function POST(request: Request): Promise<Response> {
+  await syncLiveCompany();
   const parsed = body.safeParse(await jsonBody(request));
   if (!parsed.success)
     return badRequest(
@@ -30,6 +31,10 @@ export async function POST(request: Request): Promise<Response> {
     return badRequest("payrollRun.period must be YYYY-MM.");
   }
   return railResponse(
-    await payoutRail().quote({ employer: refundTo, period: runPeriod, runId: payrollRun.runId }),
+    await (await payoutRail()).quote({
+      employer: refundTo,
+      period: runPeriod,
+      runId: payrollRun.runId,
+    }),
   );
 }

@@ -2,6 +2,9 @@ import { type Fixtures, loadFixtures } from "@homeroll/fixtures";
 import { getEnv } from "@/lib/env";
 import type { ChainClient } from "./client";
 import { overlayLiveCompany } from "./demo-company";
+
+export { syncLiveCompany } from "./demo-company";
+
 import { FakeChainClient } from "./fake";
 import { NearChainClient } from "./near";
 import { recordingActivity } from "./recorded";

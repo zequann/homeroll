@@ -1,5 +1,5 @@
 import { homerollAccounts } from "@homeroll/shared";
-import { invoiceAgentDeps, invoiceResults } from "@/lib/agents";
+import { invoiceAgentDeps, saveInvoiceResult } from "@/lib/agents";
 import { invoiceDocumentFromPdf, runInvoiceAgent } from "@/lib/agents/invoice-agent";
 import { proposePayroll } from "@/lib/agents/payroll";
 import { demoKey } from "@/lib/demo-keys";
@@ -123,7 +123,7 @@ async function doubleFinance(): Promise<AttackResult> {
   let result = await runInvoiceAgent(deps, doc);
   if (result.attest.ok) {
     // First upload was genuine; keep its record so the owner console shows it checked
-    invoiceResults().set(invoice.number, result);
+    await saveInvoiceResult(result);
     notes.push("First upload registered normally. The same document was then uploaded again.");
     result = await runInvoiceAgent(deps, doc);
   }
@@ -156,7 +156,7 @@ async function hiddenPrompt(): Promise<AttackResult> {
     deps,
     await invoiceDocumentFromPdf(fixtures, invoice, { tampered: true }),
   );
-  if (result.attest.ok) invoiceResults().set(invoice.number, result);
+  if (result.attest.ok) await saveInvoiceResult(result);
 
   // The fooled agent offers 100%; the owner's request goes to the pool, which checks the cap.
   const owner = { role: "owner" as const, accountId: fixtures.company.accountId };

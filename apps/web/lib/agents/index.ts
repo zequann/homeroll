@@ -1,5 +1,5 @@
 import { getChainClient, getFixtures } from "@/lib/near";
-import { cacheForEmployer, type EmployerCache } from "@/lib/near/demo-company";
+import { rowStore } from "@/lib/store/rows";
 import { MockInference } from "./inference";
 import type { InvoiceAgentDeps, InvoiceAgentResult } from "./invoice-agent";
 import { mockMyInvois } from "./myinvois";
@@ -17,29 +17,38 @@ export function invoiceAgentDeps(): InvoiceAgentDeps {
 
 /**
  * The agent's last result per invoice number: check results, grade and what the model said
- * (SPEC §8.7 `invoices` table; in memory until Supabase is wired). Cleared by Reset demo.
+ * (SPEC §8.7 `invoices` table): Supabase when configured, memory otherwise. Scoped by the demo
+ * employer, so a Reset demo starts on none.
  */
-const globalForResults = globalThis as unknown as {
-  __homerollInvoiceResults?: EmployerCache<Map<string, InvoiceAgentResult>>;
-};
+const scope = () => getFixtures().company.accountId;
 
-export function invoiceResults(): Map<string, InvoiceAgentResult> {
-  globalForResults.__homerollInvoiceResults ??= new Map();
-  return cacheForEmployer(
-    globalForResults.__homerollInvoiceResults,
-    getFixtures().company.accountId,
-    () => new Map(),
-  );
+export async function loadInvoiceResults(): Promise<Map<string, InvoiceAgentResult>> {
+  const rows = await rowStore().list<InvoiceAgentResult>("invoices", scope());
+  return new Map(rows.map((r) => [r.key, r.data]));
+}
+
+export async function saveInvoiceResult(result: InvoiceAgentResult): Promise<void> {
+  await rowStore().upsert("invoices", scope(), result.invoiceNumber, result);
+}
+
+export async function clearInvoiceResults(): Promise<void> {
+  await rowStore().clear("invoices", scope());
 }
 
 /**
  * Keeps the report the invoice's row shows. A re-run the registry refuses must not hide the first
  * check, and a different document with the same number (an edited amount) is not this invoice.
  */
-export function rememberInvoiceResult(result: InvoiceAgentResult, fixtureHash: string): void {
+export async function rememberInvoiceResult(
+  result: InvoiceAgentResult,
+  fixtureHash: string,
+): Promise<void> {
   if (result.invoiceKey !== fixtureHash) return;
-  const results = invoiceResults();
-  if (result.attest.ok || !results.has(result.invoiceNumber)) {
-    results.set(result.invoiceNumber, result);
-  }
+  if (result.attest.ok) return saveInvoiceResult(result);
+  const existing = await rowStore().get<InvoiceAgentResult>(
+    "invoices",
+    scope(),
+    result.invoiceNumber,
+  );
+  if (!existing) await saveInvoiceResult(result);
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { labelAction } from "@/lib/activity";
 import { ATTACK_IDS, type AttackResult, runAttack as run } from "@/lib/attacks";
+import { syncLiveCompany } from "@/lib/near";
 
 export type { AttackResult };
 
@@ -12,6 +13,7 @@ export type { AttackResult };
  * keys the real flows use, so no wallet is needed.
  */
 export async function runAttack(id: unknown): Promise<AttackResult> {
+  await syncLiveCompany();
   const attackId = z.enum(ATTACK_IDS).parse(id);
   labelAction(`Attack ${attackId}`);
   const result = await run(attackId);

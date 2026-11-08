@@ -54,7 +54,7 @@ Do X → see Y:
 
 1. Open `/` and press **Start the demo** → `/owner` opens as Perabot Jaya Sdn Bhd. The treasury shows RM18,400 and payroll is short. There is no wallet to connect: everyone shares the same demo accounts, and each page signs as its own role on the server.
 2. On **Invoices**, press **Check with agent** on INV-2026-1043 → four checks, Grade A, a RM120,000 offer and a "Mock model" badge. Press **Take advance** → the treasury grows by RM120,000.
-3. Press **Run payroll** → the contract checks the run, the owner signs a payout intent (NEP-413), and the payout rail checks it before anything is paid. The **Payout** panel shows the intent hash and each payout hash. Open **What an outsider sees** to compare this demo with production.
+3. Press **Run payroll** → the contract checks the run, the owner signs a payout intent (NEP-413), and the payout rail checks it before anything is paid. The **Payout** panel shows the intent hash and each payout hash, under a "Confidential layer: simulated" badge.
 4. Open **Worker** in the toolbar → Rahim's phone shows RM1,950.00 within seconds. **Send home** and **Cash out** go through the relayer policy to mock partners.
 5. Back on **Owner** → **Invoices**, press **Buyer paid** → the invoice settles through the mock bank: the pool is repaid RM121,800 and the treasury gets RM28,200.
 6. On **Invoices**, press **Download PDF**, then **Upload invoice** with that file → the same checks and grade. Upload the tampered copy linked from attack 04 in `/lab` → its text is white, so it looks clean, and the model says "A+" and "100%", but the code keeps Grade A and an 80% cap.
@@ -164,3 +164,4 @@ Exact versions, pinned where each is declared.
 | `pdf-lib` (invoice PDFs, pure JS) | 1.17.1 | `packages/shared/package.json` |
 | `@playwright/test` (browser tests) | 1.65.0 | `apps/web/package.json` |
 | `@axe-core/playwright` (WCAG checks) | 4.14.0 | `apps/web/package.json` |
+| Supabase (off-chain rows, optional locally) | free tier, PostgREST over `fetch`, no SDK | `supabase/schema.sql`, `apps/web/lib/store/rows.ts` |

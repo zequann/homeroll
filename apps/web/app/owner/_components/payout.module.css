@@ -36,36 +36,3 @@
 .hashes a {
   color: var(--accent);
 }
-.seen summary {
-  cursor: pointer;
-  color: var(--ink-2);
-}
-.seen[open] summary {
-  margin-bottom: var(--s-2);
-}
-.seenTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-.seenTable th,
-.seenTable td {
-  padding: var(--s-2) var(--s-2) var(--s-2) 0;
-  text-align: left;
-  vertical-align: top;
-  border-top: 0.5px solid var(--ink-4);
-}
-.seenTable thead th {
-  border-top: 0;
-  color: var(--ink-3);
-  font-weight: 400;
-}
-.seenTable tbody th {
-  font-weight: 600;
-  white-space: nowrap;
-}
-@media (max-width: 559px) {
-  .seenTable tbody th {
-    white-space: normal;
-  }
-}

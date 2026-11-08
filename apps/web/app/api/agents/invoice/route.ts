@@ -2,6 +2,7 @@ import { z } from "zod";
 import { invoiceAgentDeps, rememberInvoiceResult } from "@/lib/agents";
 import { invoiceDocumentFromPdf, runInvoiceAgent } from "@/lib/agents/invoice-agent";
 import { checkUploadedInvoice } from "@/lib/agents/upload";
+import { syncLiveCompany } from "@/lib/near";
 
 const bodySchema = z
   .object({ invoiceNumber: z.string().max(40), tampered: z.boolean().optional() })
@@ -9,6 +10,7 @@ const bodySchema = z
 
 /** Invoice agent (SPEC §8.1). Runs for the shared demo company: it attests with the agent's key. */
 export async function POST(request: Request): Promise<Response> {
+  await syncLiveCompany();
   // Multipart = an uploaded PDF (curl -F file=@invoice.pdf). JSON = one of the company's own.
   if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
     return uploaded(request);
@@ -25,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
     tampered: body.data.tampered,
   });
   const result = await runInvoiceAgent(deps, document);
-  rememberInvoiceResult(result, invoice.hash);
+  await rememberInvoiceResult(result, invoice.hash);
   return Response.json({ mock: result.model.mock, ...result });
 }
 
@@ -41,6 +43,6 @@ async function uploaded(request: Request): Promise<Response> {
     return Response.json({ reason: outcome.reason, message: outcome.message }, { status });
   }
   const fixture = deps.fixtures.invoices.find((i) => i.number === outcome.result.invoiceNumber);
-  if (fixture) rememberInvoiceResult(outcome.result, fixture.hash);
+  if (fixture) await rememberInvoiceResult(outcome.result, fixture.hash);
   return Response.json({ mock: outcome.result.model.mock, ...outcome.result });
 }
