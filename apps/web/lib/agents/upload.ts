@@ -22,7 +22,7 @@ const MESSAGE: Record<UploadRefusal, string> = {
   "too-large": "That file is too big. Invoice PDFs here are well under 512 KB.",
   "not-a-pdf": "That file is not a PDF. Upload a PDF invoice.",
   unreadable:
-    "We could not read an invoice in that PDF. This demo reads the invoice template: download one above and try that.",
+    "We could not read an invoice in that PDF. Homeroll reads invoices made from its template: download one above and try that.",
   "unknown-invoice":
     "That invoice is not one of this demo company's. Download one of the invoices above and upload that.",
 };

@@ -53,7 +53,6 @@ export default async function OwnerPage({
             bufferSen={view.bufferSen}
             periodLabel={view.periodLabel}
             facts={view.facts}
-            canFund={view.mode === "testnet"}
             showAdvanceShortcut={tab !== "invoices"}
           />
 

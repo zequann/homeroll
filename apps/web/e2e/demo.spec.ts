@@ -56,15 +56,10 @@ async function happyPath() {
     const payout = page.getByRole("region", { name: "Payout" });
     await expect(payout).toContainText("Confidential layer: simulated");
     await expect(payout).toContainText("Paid · 40 transfer intents · RM78,000.00");
-    await expect(
-      payout.getByText("Simulated. In production this settles on NEAR's private shard."),
-    ).toHaveCount(2);
-    // This demo against production, in one disclosure
-    await payout.getByText("What an outsider sees").click();
-    await expect(payout.getByRole("row", { name: /Payday/ })).toContainText(
-      "pay_run: payroll → each worker",
-    );
-    await expect(payout.getByRole("row", { name: /Payday/ })).toContainText("Nothing.");
+    // One payout transaction per pay_run batch (40 lines, 20 per call)
+    await expect(payout.getByRole("listitem")).toHaveCount(2);
+    // The deployed page shows what happened, not how production would differ
+    await expect(payout).not.toContainText("In production");
 
     await ownerTab("Pay lines");
     await expect(page.getByRole("row", { name: /Rahim Uddin/ })).toContainText("Paid");

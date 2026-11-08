@@ -16,13 +16,10 @@ import { checkUploadedInvoice, type UploadOutcome } from "@/lib/agents/upload";
 import { resetDemoEverywhere } from "@/lib/demo-reset";
 import { describeFailure, type FailureView } from "@/lib/describe-failure";
 import { getEnv } from "@/lib/env";
-import { addTreasury } from "@/lib/fund/plan";
 import { parseRm, sen, senToUnits } from "@/lib/fx";
-import { adminSigner } from "@/lib/keys";
 import { settleWithMockBank } from "@/lib/mock/bank";
 import { getChainClient, getFixtures } from "@/lib/near";
 import { period } from "@/lib/near/client";
-import { configureRpc } from "@/lib/near/rpc";
 import { approvePayout as approveWithRail, openApproval, sealApproval } from "@/lib/payout";
 import { railFailure } from "@/lib/payout/explain";
 import { approvalSecret, ownerSigns, payoutRail } from "@/lib/payout/server";
@@ -342,51 +339,6 @@ export async function buyerPaid(invoiceNumber: unknown): Promise<BuyerPaidResult
   revalidatePath("/lender");
   if (!receipt) return { ok: false, reason: "refunded" };
   return { ok: true, ref: receipt.ref, ownerGetsSen: receipt.ownerGetsSen };
-}
-
-const FUND_SEN = sen(2_000_000);
-
-/** Adds RM20,000 of testnet tUSDC to this company's payroll treasury. */
-export async function fundTreasury(): Promise<OwnerCallResult> {
-  if (getEnv().chainClient !== "near") {
-    return {
-      ok: false,
-      reason: "rejected",
-      failure: {
-        sentence: "Adding tUSDC runs against testnet.",
-        code: "FAKE_CHAIN",
-        ruleCaption: null,
-        shortfallSen: null,
-      },
-    };
-  }
-  const rpc = process.env.NEAR_RPC_URL;
-  if (rpc) configureRpc(rpc);
-  const admin = adminSigner(getEnv().root, process.env.HOMEROLL_ADMIN_PRIVATE_KEY?.trim() ?? null);
-  if (!admin) {
-    return {
-      ok: false,
-      reason: "rejected",
-      failure: {
-        sentence: "The server has no admin key, so it cannot mint tUSDC.",
-        code: "NO_ADMIN",
-        ruleCaption: null,
-        shortfallSen: null,
-      },
-    };
-  }
-  try {
-    await addTreasury(admin, getFixtures().company.accountId, senToUnits(FUND_SEN));
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      ok: false,
-      reason: "rejected",
-      failure: { sentence: message, code: "FUND_FAILED", ruleCaption: null, shortfallSen: null },
-    };
-  }
-  refresh();
-  return { ok: true };
 }
 
 /** Reset demo (SPEC §9.6). In fake mode it restores the fixtures and clears off-chain records. */

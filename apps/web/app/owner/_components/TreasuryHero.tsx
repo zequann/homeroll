@@ -8,13 +8,7 @@ import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
 import { RollingMoney } from "@/components/RollingMoney";
 import { formatRm, type Sen } from "@/lib/fx";
-import {
-  approvePayout,
-  cancelPayroll,
-  fundTreasury,
-  payNextBatch,
-  submitPayroll,
-} from "../actions";
+import { approvePayout, cancelPayroll, payNextBatch, submitPayroll } from "../actions";
 import styles from "./owner.module.css";
 import {
   buttonEnabled,
@@ -33,8 +27,6 @@ export interface TreasuryHeroProps {
   bufferSen: Sen;
   periodLabel: string;
   facts: RunFacts;
-  /** Testnet only. Mints tUSDC into this company's treasury. */
-  canFund: boolean;
   /** On the Invoices tab the row's own Take advance is right there, so the shortcut hides. */
   showAdvanceShortcut?: boolean;
 }
@@ -47,10 +39,8 @@ export function TreasuryHero(props: TreasuryHeroProps) {
     bufferSen,
     periodLabel,
     facts,
-    canFund,
     showAdvanceShortcut = true,
   } = props;
-  const [fundNote, setFundNote] = useState<string | null>(null);
   const router = useRouter();
   const [local, setLocal] = useState<LocalPhase>(IDLE);
   const [pending, start] = useTransition();
@@ -183,24 +173,6 @@ export function TreasuryHero(props: TreasuryHeroProps) {
               Take advance
             </Button>
           ) : null}
-          {canFund ? (
-            <Button
-              variant="tinted"
-              disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  setFundNote(null);
-                  const result = await fundTreasury();
-                  if (result.ok) setFundNote("Added RM20,000.00 of testnet tUSDC.");
-                  else setFundNote(result.failure.sentence);
-                  router.refresh();
-                })
-              }
-            >
-              Add RM20,000.00
-            </Button>
-          ) : null}
-          {fundNote ? <span className="t-caption ink-3">{fundNote}</span> : null}
           <span className="t-caption ink-3">
             {periodLabel} · {facts.lineCount} workers ·{" "}
             <Money value={facts.periodTotalSen ?? facts.totalSen} decimals={2} />

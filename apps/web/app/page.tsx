@@ -40,7 +40,6 @@ export default function LandingPage() {
                 bufferSen={snap.bufferSen}
                 periodLabel={snap.periodLabel}
                 facts={snap.facts}
-                canFund={false}
               />
               <div className={styles.table}>
                 <PayLines rows={snap.rows} caption={false} actions={false} />
