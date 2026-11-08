@@ -160,14 +160,14 @@ export async function applyDepositRouteAction(
           fundYocto: action.fundYocto,
         }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "topUpNear":
       await broadcastAdmin(
         adminStep({ kind: "topUp", account: action.accountId, fundYocto: action.fundYocto }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "storageDeposit":
@@ -179,14 +179,14 @@ export async function applyDepositRouteAction(
           depositYocto: TOKEN_STORAGE_DEPOSIT_YOCTO,
         }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "mintTo":
       await broadcastAdmin(
         planMint(homerollAccounts(admin.accountId), action.accountId, action.amount),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
   }

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
 import { Money } from "@/components/Money";
+import { useActionTransition } from "@/components/useActionTransition";
 import type { FailureView } from "@/lib/describe-failure";
 import type { PayeeRow } from "@/lib/views/owner";
 import { addPayee, addPayeeBack, type OwnerCallResult, removePayee } from "../actions";
@@ -28,7 +30,7 @@ function HoldCountdown({ activeFromMs }: { activeFromMs: number }) {
 }
 
 export function Workers({ rows, onboarding }: { rows: PayeeRow[]; onboarding: boolean }) {
-  const [pending, start] = useTransition();
+  const [pending, start, failed] = useActionTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", role: "", cap: "" });
@@ -97,6 +99,7 @@ export function Workers({ rows, onboarding }: { rows: PayeeRow[]; onboarding: bo
           : "A new payee waits 48 hours before they can be paid."}{" "}
         The server picks a random account. The name stays in Homeroll's records.
       </p>
+      <ActionFailed show={failed} />
       {message ? (
         <p className={`t-caption ${styles.bad}`} role="alert">
           {message}

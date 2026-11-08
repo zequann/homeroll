@@ -3,6 +3,8 @@ import { loadEnvLocal, readSeedEnv, seedCompany } from "../apps/web/lib/seed/she
 import { loadFixtures } from "../fixtures/index.ts";
 
 const envFile = loadEnvLocal("apps/web/.env.local");
+// The RPC client reads its fallback endpoints from process.env (lib/near/rpc-retry.ts)
+process.env.NEAR_RPC_FALLBACK_URLS ??= envFile.NEAR_RPC_FALLBACK_URLS;
 const parsed = readSeedEnv({ ...envFile, ...process.env });
 if (!parsed.ok) {
   console.error(JSON.stringify({ outcome: "blocked", reason: parsed.reason }));

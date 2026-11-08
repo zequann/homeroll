@@ -20,6 +20,7 @@ import type { AdminStep } from "../deploy/deploy";
 import { type Units, units } from "../fx/index.ts";
 import type { AdminSigner, RelayerSigner, WorkerSigner } from "../keys";
 import type { PayableBytes } from "../relay/relay";
+import { rpcUrls, sendWithRetry } from "./rpc-retry.ts";
 
 export type CodeHash = string & { readonly __codeHash: "CodeHash" };
 
@@ -66,10 +67,60 @@ export function configureRpc(url: string): void {
   rpcUrl = url;
 }
 
+/**
+ * Every provider method ends in `sendJsonRpc`, so overriding it gives reads, view calls and
+ * transaction sends the same 429 retry and fallback endpoints (`rpc-retry.ts`).
+ */
+class RetryingRpcProvider extends JsonRpcProvider {
+  private readonly urls: string[];
+  private readonly endpoints: Map<string, JsonRpcProvider>;
+
+  // No parameter properties: scripts load this file with node --experimental-strip-types
+  constructor(urls: string[]) {
+    super({ url: urls[0] ?? "" });
+    this.urls = urls;
+    // near-api-js's own retries (500, 503, 408, fetch errors) resend the same bytes. Its default of
+    // 12 tries with a 1.5x backoff takes ~95 s, so a dead endpoint held a reset for minutes; 4 tries
+    // take ~4 s, then rpc-retry moves a read to the next endpoint.
+    this.endpoints = new Map(
+      urls.map((url) => [
+        url,
+        new JsonRpcProvider({ url }, { retries: 4, wait: 500, backoff: 1.5 }),
+      ]),
+    );
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: forwards near-api-js's generic signature unchanged
+  override sendJsonRpc(method: any, params: any): Promise<any> {
+    return sendWithRetry(this.urls, String(method), (url) => {
+      const endpoint = this.endpoints.get(url);
+      if (!endpoint) throw new Error(`No RPC endpoint for ${url}`);
+      return endpoint.sendJsonRpc(method, params);
+    });
+  }
+}
+
+let cached: { key: string; provider: RetryingRpcProvider } | null = null;
+
 function provider(): JsonRpcProvider {
   if (!rpcUrl) throw new Error("NEAR_RPC_URL is not set");
-  return new JsonRpcProvider({ url: rpcUrl });
+  const urls = rpcUrls(rpcUrl);
+  const key = urls.join(",");
+  if (cached?.key !== key) cached = { key, provider: new RetryingRpcProvider(urls) };
+  return cached.provider;
 }
+
+/**
+ * How long a transaction send waits. "EXECUTED" waits until the transaction and every receipt it
+ * started have run, so cross-contract calls (pay_run's transfers, ft_transfer_call into the pool)
+ * are done and the next read shows them. It does not wait for the block to be final: about 1.8 s
+ * a transaction on testnet against 3.9 s for FINAL (measured 9 Nov 2026). Safe here because
+ * near-api-js reads the next nonce at the same optimistic state, and on InvalidNonce it re-signs,
+ * which only happens when the first transaction was never included, so nothing runs twice.
+ */
+export type TxWait = "INCLUDED" | "EXECUTED";
+const EXECUTED = "EXECUTED_OPTIMISTIC" as const;
+const waitStatus = (wait: TxWait) => (wait === "EXECUTED" ? EXECUTED : "INCLUDED");
 
 const ZERO_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 const GAS_DEPLOY_NEW = 200n * 1_000_000_000_000n;
@@ -264,8 +315,9 @@ function signingAccount(signer: {
 export async function broadcastAdmin(
   step: AdminStep,
   admin: AdminSigner,
-  waitUntil: "INCLUDED" | "FINAL" = "INCLUDED",
+  wait: TxWait = "INCLUDED",
 ): Promise<{ txHash: string }> {
+  const waitUntil = waitStatus(wait);
   const account = signingAccount(admin);
   switch (step.kind) {
     case "deploy": {
@@ -494,7 +546,7 @@ export async function createAccountWithFunctionCallKey(
   const outcome = await signingAccount(signer).signAndSendTransaction({
     receiverId: accountId,
     actions: [actions.createAccount(), functionCallKeyAction(key), actions.transfer(fundYocto)],
-    waitUntil: "FINAL",
+    waitUntil: EXECUTED,
   });
   return { txHash: outcome.transaction_outcome.id };
 }
@@ -508,7 +560,7 @@ export async function addFunctionCallAccessKey(
   const outcome = await signingAccount(signer).signAndSendTransaction({
     receiverId: accountId,
     actions: [functionCallKeyAction(key)],
-    waitUntil: "FINAL",
+    waitUntil: EXECUTED,
   });
   return { txHash: outcome.transaction_outcome.id };
 }
@@ -528,7 +580,7 @@ export async function callMethods(
     actions: calls.map((call) =>
       actions.functionCall(call.method, call.args, GAS_FUNCTION_CALL, 0n),
     ),
-    waitUntil: "FINAL",
+    waitUntil: EXECUTED,
   });
   return { txHash: outcome.transaction_outcome.id };
 }
@@ -542,7 +594,7 @@ export async function transferNear(
   const outcome = await signingAccount(signer).signAndSendTransaction({
     receiverId,
     actions: [actions.transfer(yocto)],
-    waitUntil: "FINAL",
+    waitUntil: EXECUTED,
   });
   return { txHash: outcome.transaction_outcome.id };
 }
@@ -555,7 +607,7 @@ export async function callMethod(
   const outcome = await signingAccount(signer).signAndSendTransaction({
     receiverId,
     actions: [actions.functionCall(call.method, call.args, call.gas, call.depositYocto)],
-    waitUntil: "FINAL",
+    waitUntil: EXECUTED,
   });
   return { txHash: outcome.transaction_outcome.id };
 }
@@ -572,7 +624,7 @@ export async function callMethodWithReceipts(
   const outcome = await signingAccount(signer).signAndSendTransaction({
     receiverId,
     actions: [actions.functionCall(call.method, call.args, call.gas, call.depositYocto)],
-    waitUntil: "FINAL",
+    waitUntil: EXECUTED,
   });
   const receiptFailures: string[] = [];
   for (const receipt of outcome.receipts_outcome) {

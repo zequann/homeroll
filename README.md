@@ -8,7 +8,7 @@ Built for NEAR HACKATHON. Everything runs on NEAR testnet with synthetic data. N
 
 ## The problem
 
-- **Cash on payday.** The demo company, Perabot Jaya Sdn Bhd (synthetic), has RM18,400 in its treasury and owes RM78,000 in wages on 31 October, while RM150,000 of invoices are due in 60 days.
+- **Cash on payday.** The demo company, Coffee Factory Sdn Bhd (synthetic), has RM18,400 in its treasury and owes RM78,000 in wages on 31 October, while RM150,000 of invoices are due in 60 days.
 - **Cost of sending money home.** Sending money from Malaysia to Bangladesh costs 7.51% all-in on average (World Bank Remittance Prices Worldwide, Q3 2025, sending USD 200).
 - **Agents that can be fooled.** AI agents can read invoices and timesheets, but a fooled agent must not be able to move money it should not.
 
@@ -50,9 +50,17 @@ pnpm install
 CHAIN_CLIENT=fake pnpm dev   # http://localhost:3000, fixture data, no chain needed
 ```
 
+> **Please be patient on testnet.** The hosted demo talks to NEAR testnet through free public RPC endpoints (FastNEAR, dRPC), which are slow and rate-limited. Measured on 9 Nov 2026:
+>
+> - **Reset demo takes about 40–70 seconds.** It creates a new company account, registers 40 payees, adds keys and funds the treasury and pool. Wait until the button shows **Reset demo** again before you press anything else. If it says the RPC is busy, wait a minute and press it again: it picks up where it stopped.
+> - **Each button that writes to the chain takes a few seconds.** A testnet transaction takes about 2 seconds; **Run payroll** sends three (`submit_run`, then two `pay_run` batches of 20), plus the owner's signed approval in between.
+> - **Pages load in about 1 second.**
+>
+> When an endpoint rate-limits (HTTP 429), the app waits and retries, and moves reads to a backup endpoint, so a step can take longer but nothing is sent twice. On the fake chain (`CHAIN_CLIENT=fake`) everything is instant.
+
 Do X → see Y:
 
-1. Open `/` and press **Start the demo** → `/owner` opens as Perabot Jaya Sdn Bhd. The treasury shows RM18,400 and payroll is short. There is no wallet to connect: everyone shares the same demo accounts, and each page signs as its own role on the server.
+1. Open `/` and press **Start the demo** → `/owner` opens as Coffee Factory Sdn Bhd. The treasury shows RM18,400 and payroll is short. There is no wallet to connect: everyone shares the same demo accounts, and each page signs as its own role on the server.
 2. On **Invoices**, press **Check with agent** on INV-2026-1043 → four checks, Grade A, a RM120,000 offer and a "Mock model" badge. Press **Take advance** → the treasury grows by RM120,000.
 3. Press **Run payroll** → the contract checks the run, the owner signs a payout intent (NEP-413), and the payout rail checks it before anything is paid. The **Payout** panel shows the intent hash and each payout hash, under a "Confidential layer: simulated" badge.
 4. Open **Worker** in the toolbar → Rahim's phone shows RM1,950.00 within seconds. **Send home** and **Cash out** go through the relayer policy to mock partners.
@@ -132,6 +140,7 @@ pnpm demo:reset           # a fresh demo company on testnet, as the Reset demo b
 15. `update_cap` and `withdraw` (SPEC §7.3) are not in the payroll contract yet. The app does not call them.
 16. The app keeps some state in memory and in `apps/web/.data/`, so it runs as one long-lived server (`pnpm --filter web build && pnpm --filter web start`).
 17. The mock invoice model reads this project's invoice template only, so other PDFs are refused.
+18. Speed depends on free testnet RPC tiers. Reset demo takes about 40–70 s and each chain write about 2 s; under rate limits (HTTP 429) the app waits and retries, so steps can take longer. A paid RPC plan would remove the limits.
 
 ## Related work
 

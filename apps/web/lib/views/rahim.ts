@@ -16,7 +16,7 @@ export interface RahimView {
   sends: { id: number; label: string; amountSen: Sen }[];
 }
 
-export const WAGE_LABEL = "October wage · Perabot Jaya";
+export const WAGE_LABEL = "October wage · Coffee Factory";
 
 export async function loadRahimView(): Promise<RahimView> {
   const chain = getChainClient();

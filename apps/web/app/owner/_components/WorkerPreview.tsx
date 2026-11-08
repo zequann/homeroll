@@ -60,7 +60,7 @@ export function WorkerPreview({
           </p>
         </>
       ) : (
-        <p className="t-caption ink-2">October wage arrives when Perabot Jaya runs payroll.</p>
+        <p className="t-caption ink-2">October wage arrives when Coffee Factory runs payroll.</p>
       )}
     </div>
   );

@@ -105,11 +105,11 @@ describe("Supabase row store", () => {
       new Response(JSON.stringify([{ key: "a", data: { amount: { $bigint: "7" } } }])),
     ]);
     const store = createSupabaseRowStore({ url: "https://x", secretKey: "sb_secret_t", fetch: fn });
-    expect(await store.list("activity", "perabotjaya.homeroll.testnet", 50)).toEqual([
+    expect(await store.list("activity", "coffeefactory.homeroll.testnet", 50)).toEqual([
       { key: "a", data: { amount: 7n } },
     ]);
     expect(calls[0]?.url).toBe(
-      "https://x/rest/v1/activity?scope=eq.perabotjaya.homeroll.testnet&select=key,data&order=created_at.desc,key.desc&limit=50",
+      "https://x/rest/v1/activity?scope=eq.coffeefactory.homeroll.testnet&select=key,data&order=created_at.desc,key.desc&limit=50",
     );
   });
 

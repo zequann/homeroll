@@ -29,6 +29,8 @@ export async function withoutErrors(page: Page, run: () => Promise<void>): Promi
 
 /** WCAG 2.1 A and AA checks with axe. Returns every violation; callers assert on them. */
 export async function axeViolations(page: Page) {
+  // Next streams metadata after the body, so a client navigation can be scanned before <title> lands
+  await expect(page).toHaveTitle(/\S/);
   // Scan the final colours, not a frame of an entrance fade
   await page.waitForFunction(() =>
     document.getAnimations().every((a) => a.playState !== "running"),

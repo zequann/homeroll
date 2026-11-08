@@ -528,7 +528,7 @@ mod tests {
 
     fn employer_with_one_payee() -> Employer {
         testing_env!(VMContextBuilder::new().build());
-        let mut employer = Employer::new(&account("perabotjaya.homeroll.testnet"), 0);
+        let mut employer = Employer::new(&account("coffeefactory.homeroll.testnet"), 0);
         employer
             .add_payee(account(W1), 100, NOW, &Config::INITIAL)
             .expect("onboarding add");

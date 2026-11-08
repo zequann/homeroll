@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Button } from "@/components/Button";
 import { ContractErrorNote } from "@/components/ContractErrorNote";
+import { useActionTransition } from "@/components/useActionTransition";
 import type { FailureView } from "@/lib/describe-failure";
 import { takeAdvance } from "../actions";
 
 export function TakeAdvance({ number }: { number: string }) {
-  const [pending, start] = useTransition();
+  const [pending, start, failed] = useActionTransition();
   const [failure, setFailure] = useState<FailureView | null>(null);
 
   return (
@@ -34,6 +36,7 @@ export function TakeAdvance({ number }: { number: string }) {
       >
         Take advance
       </Button>
+      <ActionFailed show={failed} />
       {failure ? (
         <ContractErrorNote
           sentence={failure.sentence}

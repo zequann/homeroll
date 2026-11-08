@@ -101,7 +101,7 @@ export function companyFloors(fixtures: Fixtures): FundFloors {
 export function fundAccounts(
   root: AccountId,
   escrowPublicKey: string,
-  ownerLabel = "perabotjaya",
+  ownerLabel = "coffeefactory",
 ): FundAccounts {
   const accounts = accountsFor(root);
   return {
@@ -241,7 +241,7 @@ export async function applyFundAction(action: FundAction, admin: AdminSigner): P
           fundYocto: ESCROW_FUND_YOCTO,
         }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "addSettler":
@@ -253,7 +253,7 @@ export async function applyFundAction(action: FundAction, admin: AdminSigner): P
       await broadcastAdmin(
         planMint(accountsFor(admin.accountId), action.accountId, action.amount),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "storageDeposit":
@@ -265,7 +265,7 @@ export async function applyFundAction(action: FundAction, admin: AdminSigner): P
           depositYocto: TOKEN_STORAGE_DEPOSIT_YOCTO,
         }),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "setMaxBuyerExposure":
@@ -280,7 +280,7 @@ export async function applyFundAction(action: FundAction, admin: AdminSigner): P
       await broadcastAdmin(
         planMint(accountsFor(admin.accountId), action.funder, action.amount),
         admin,
-        "FINAL",
+        "EXECUTED",
       );
       return;
     case "creditTreasury":

@@ -32,7 +32,7 @@ async fn deploy_payroll(env: &Env) -> TestResult<AccountId> {
 async fn employer_with_one_payee() -> TestResult<(Env, AccountId, AccountId, AccountId)> {
     let env = Env::start().await?;
     let payroll = deploy_payroll(&env).await?;
-    let employer = env.create_user("perabotjaya").await?;
+    let employer = env.create_user("coffeefactory").await?;
     env.call(
         &env.root,
         &payroll,
@@ -169,7 +169,7 @@ async fn an_employer_is_registered_once() -> TestResult {
 async fn the_41st_payee_is_rejected_and_the_count_stays_at_40() -> TestResult {
     let env = Env::start().await?;
     let payroll = deploy_payroll(&env).await?;
-    let employer = env.create_user("perabotjaya").await?;
+    let employer = env.create_user("coffeefactory").await?;
     env.call(
         &env.root,
         &payroll,
@@ -231,7 +231,7 @@ async fn views_distinguish_a_missing_employer_from_an_employer_with_no_runs() ->
         Value::Null
     );
 
-    let employer = env.create_user("perabotjaya").await?;
+    let employer = env.create_user("coffeefactory").await?;
     env.call(
         &env.root,
         &payroll,
@@ -334,7 +334,7 @@ async fn payroll_payout_fixture() -> TestResult<(Env, AccountId, AccountId, Acco
         .await?;
     let payroll = deploy_payroll(&env).await?;
     register_tusdc_storage(&env, &tusdc, &payroll).await?;
-    let employer = env.create_user("perabotjaya").await?;
+    let employer = env.create_user("coffeefactory").await?;
     register_tusdc_storage(&env, &tusdc, &employer).await?;
     env.call(
         &env.root,

@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { loadFixtures } from "@homeroll/fixtures";
 import {
   type AccountId,
   homerollAccounts,
@@ -9,7 +9,12 @@ import { getEnv } from "@/lib/env";
 import type { Units } from "@/lib/fx";
 import { adminSigner, deriveKey } from "@/lib/keys";
 import { provisionDemoCompany } from "@/lib/near/demo-company";
-import { ExposureLog } from "@/lib/relay/exposure";
+import {
+  type ExposureLog,
+  NEAR_CLIENT_RELAY_DIR,
+  RELAY_ROUTE_DIR,
+  relayExposureLog,
+} from "@/lib/relay/exposure";
 import { relay } from "@/lib/relay/relay";
 import { readSeedEnv } from "@/lib/seed/shell";
 import type {
@@ -68,7 +73,12 @@ const GAS_SETTLE = 200n * 1_000_000_000_000n;
 // The pool's ft_on_transfer only does arithmetic; the token resolves after.
 const GAS_DEPOSIT = 100n * 1_000_000_000_000n;
 
-const exposure = ExposureLog.files(join(process.cwd(), ".data", "relay-near-client"));
+// Built on first use: whether Supabase is configured is read at request time, not import time
+let exposureLog: ExposureLog | null = null;
+function exposure(): ExposureLog {
+  exposureLog ??= relayExposureLog(NEAR_CLIENT_RELAY_DIR);
+  return exposureLog;
+}
 
 // The RPC names each rejection; near-api-js 7.4 rethrows it as this sentence instead.
 const PROTOCOL_FAILURES: readonly [ProtocolFailureName, RegExp][] = [
@@ -441,7 +451,7 @@ export class NearChainClient implements ChainClient {
       now: () => new Date(),
       blockHeight,
       accessKey,
-      exposure,
+      exposure: exposure(),
       relayer,
       submit: submitDelegate,
     });
@@ -496,7 +506,16 @@ export class NearChainClient implements ChainClient {
   async resetDemo(): Promise<{ employer: AccountId }> {
     const parsed = readSeedEnv(process.env);
     if (!parsed.ok) throw new Error(parsed.reason);
-    return provisionDemoCompany(parsed.input);
+    const result = await provisionDemoCompany(parsed.input);
+    // Rahim's relayer limits start over with the new company, as on the fake chain. Without this,
+    // a few demo runs in one UTC day reach his RM4,000 daily cap and Send home is refused.
+    const rahim = loadFixtures(parsed.input.root).workers[0];
+    if (rahim) {
+      await exposure().forget(rahim.accountId);
+      // The relay route's own log, when it keeps local files (with Supabase both are one table)
+      await relayExposureLog(RELAY_ROUTE_DIR).forget(rahim.accountId);
+    }
+    return result;
   }
 
   private async ensureWorker(accountId: AccountId): Promise<TxFailure | null> {

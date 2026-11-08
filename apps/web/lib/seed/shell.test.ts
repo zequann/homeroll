@@ -95,7 +95,7 @@ describe("readSeedEnv", () => {
 
 describe("seedCompany", () => {
   const company: SeedCompany = {
-    employer: "perabotjaya.homeroll.testnet",
+    employer: "coffeefactory.homeroll.testnet",
     bufferSen: 500_000,
     workers: [],
   };

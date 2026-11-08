@@ -29,6 +29,14 @@ vi.mock("@/lib/fund/deposit-route.ts", async (importOriginal) => {
   return { ...actual, provisionDepositRoute };
 });
 
+// Reset demo empties Rahim's wallet through these; no test reaches a real RPC
+const ftBalanceOf = vi.fn();
+const callMethod = vi.fn();
+vi.mock("./rpc.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./rpc.ts")>();
+  return { ...actual, ftBalanceOf, callMethod };
+});
+
 function seedInput(): SeedInput {
   return {
     network: "testnet",
@@ -55,6 +63,10 @@ beforeEach(() => {
   applyFundAction.mockReset();
   provisionDepositRoute.mockReset();
   provisionDepositRoute.mockResolvedValue(undefined);
+  ftBalanceOf.mockReset();
+  ftBalanceOf.mockResolvedValue(0n);
+  callMethod.mockReset();
+  callMethod.mockResolvedValue({ txHash: "tx-empty" });
   ledgerFile = ledgerPath();
   ledgerDir = join(ledgerFile, "..");
   process.env.DEMO_LEDGER_PATH = ledgerFile;
@@ -189,6 +201,72 @@ describe("provisionDemoCompany", () => {
       solver: `solver.${ROOT}`,
       lender: loadFixtures(ROOT).lender.accountId,
     });
+  });
+
+  it("empties Rahim's wallet back to the root before funding the new company (SPEC §9.6)", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    fundConvergesImmediately();
+    const rahim = loadFixtures(ROOT).workers[0]?.accountId;
+    ftBalanceOf.mockResolvedValue(2_900_000_000n);
+    const order: string[] = [];
+    callMethod.mockImplementation(async () => {
+      order.push("empty wallet");
+      return { txHash: "tx-empty" };
+    });
+    readFundSnapshot.mockImplementation(async () => {
+      order.push("fund");
+      return {};
+    });
+
+    const { provisionDemoCompany } = await loadDemoModule();
+    await provisionDemoCompany(seedInput());
+
+    expect(ftBalanceOf).toHaveBeenCalledWith(`tusdc.${ROOT}`, rahim);
+    expect(callMethod).toHaveBeenCalledTimes(1);
+    const [signer, receiver, call] = callMethod.mock.calls[0] ?? [];
+    expect(signer.accountId).toBe(rahim);
+    expect(receiver).toBe(`tusdc.${ROOT}`);
+    expect(call).toMatchObject({
+      method: "ft_transfer",
+      args: { receiver_id: ROOT, amount: "2900000000" },
+      depositYocto: 1n,
+    });
+    expect(order[0]).toBe("empty wallet");
+  });
+
+  it("reads the fund state again when the first read after funding still shows the old state", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    readFundSnapshot.mockResolvedValue({});
+    const mint = { kind: "mint" };
+    // Planned, then one stale read from an RPC node a block behind, then funded
+    planFund.mockReturnValueOnce([mint]).mockReturnValueOnce([mint]).mockReturnValue([]);
+    const { provisionDemoCompany } = await loadDemoModule();
+    await provisionDemoCompany(seedInput());
+    expect(applyFundAction).toHaveBeenCalledTimes(1);
+    expect(planFund).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends nothing when Rahim's wallet is already empty", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    fundConvergesImmediately();
+    const { provisionDemoCompany } = await loadDemoModule();
+    await provisionDemoCompany(seedInput());
+    expect(callMethod).not.toHaveBeenCalled();
+  });
+
+  it("still publishes the new company when emptying the wallet fails", async () => {
+    seedCompany.mockResolvedValue({ outcome: "converged", txHashes: [] });
+    fundConvergesImmediately();
+    ftBalanceOf.mockResolvedValue(1_950_000_000n);
+    callMethod.mockRejectedValue(new Error("Rate limits exceeded"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { provisionDemoCompany } = await loadDemoModule();
+    const { employer } = await provisionDemoCompany(seedInput());
+    expect(employer).toMatch(
+      new RegExp(`^coffeefactory-[0-9a-f]{4}\\.${ROOT.replace(".", "\\.")}$`),
+    );
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("a failed second reset keeps the company already published", async () => {

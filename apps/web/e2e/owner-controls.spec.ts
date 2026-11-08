@@ -96,3 +96,14 @@ test("Add payee checks its fields, then adds a payee on hold", async () => {
     await expect(worker("Test Payee")).toContainText(/w-[a-z0-9]{6}\./);
   });
 });
+
+test("Reset demo on the owner page shows the fresh company without a reload", async () => {
+  await withoutErrors(page, async () => {
+    await page.goto("/owner");
+    await expect(page.getByText(/Short by RM64,600\.00\./)).toBeHidden();
+    await page.getByRole("button", { name: "Reset demo" }).click();
+    await page.getByRole("button", { name: "Press again to reset" }).click();
+    await expect(page.getByText(/Short by RM64,600\.00\./)).toBeVisible();
+    await expect(page).toHaveURL("/owner");
+  });
+});

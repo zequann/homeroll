@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AccountId } from "@homeroll/shared";
-import type { RowStore } from "@/lib/store/rows";
+import { type RowStore, rowStore } from "@/lib/store/rows";
 
 export type BlobId = string & { readonly __blob: "BlobId" };
 export type UtcDay = string & { readonly __utcDay: "UtcDay" };
@@ -194,6 +194,25 @@ export class ExposureLog {
   }
 
   async withWorker<T>(worker: AccountId, fn: (book: WorkerBook) => T): Promise<T> {
+    return this.locked(worker, (claims) => ({ claims, result: fn(createBook(claims)) }));
+  }
+
+  /**
+   * Reset demo (SPEC §9.6): the worker's daily limits start over with the new company, as the
+   * fake chain's do. A claim still held stays, so a transfer being relayed right now still counts.
+   * Safe for the cap: the reset empties the worker's wallet, and payroll pays RM1,950 once per run.
+   */
+  async forget(worker: AccountId): Promise<void> {
+    await this.locked(worker, (claims) => ({
+      claims: claims.filter((c) => c.phase === "held"),
+      result: undefined,
+    }));
+  }
+
+  private async locked<T>(
+    worker: AccountId,
+    fn: (claims: Claim[]) => { claims: Claim[]; result: T },
+  ): Promise<T> {
     const prev = this.locks.get(worker) ?? Promise.resolve();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -207,9 +226,7 @@ export class ExposureLog {
     try {
       await this.acquire(worker);
       try {
-        const claims = await this.load(worker);
-        const book = createBook(claims);
-        const result = fn(book);
+        const { claims, result } = fn(await this.load(worker));
         await this.save(worker, claims);
         return result;
       } finally {
@@ -227,4 +244,19 @@ export function utcDay(now: Date): UtcDay {
 
 export function blobId(raw: Uint8Array): BlobId {
   return createHash("sha256").update(raw).digest("hex") as BlobId;
+}
+
+/**
+ * The relayer's claims for this server: the shared `relay_claims` table when Supabase is configured
+ * (every Vercel instance counts the same transfers, and Vercel's file system is read-only),
+ * otherwise files under `.data/<dir>`.
+ */
+export const RELAY_ROUTE_DIR = "relay";
+export const NEAR_CLIENT_RELAY_DIR = "relay-near-client";
+
+export function relayExposureLog(dir: string): ExposureLog {
+  const store = rowStore();
+  return store.kind === "supabase"
+    ? ExposureLog.rows(store)
+    : ExposureLog.files(join(process.cwd(), ".data", dir));
 }

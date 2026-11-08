@@ -75,7 +75,7 @@ All surfaces are one Next.js app on Vercel. No native app, no app store.
 
 All names and numbers are **synthetic**. Fixtures in `fixtures/` must match these tables exactly. Every Reset demo (§9.6) creates a fresh copy of this company with new synthetic tax numbers (TINs); names and amounts stay the same.
 
-**Company:** Perabot Jaya Sdn Bhd, furniture maker in Muar. 40 foreign workers.
+**Company:** Coffee Factory Sdn Bhd, coffee maker in Muar. 40 foreign workers.
 **Start (Mon 20 Oct 2026):** treasury RM18,400. Payroll on Fri 31 Oct: **RM78,000**. Buffer to keep: RM5,000. The October period stays open for runs until 30 Nov (R14), which covers the build and judging.
 
 ### Invoices
@@ -178,7 +178,7 @@ Business accounts have readable names. **Worker and lender accounts are pseudony
 | `tusdc.<root>` | Mock NEP-141 "Test USDC", 6 decimals | Deployer | Mintable by admin on testnet only |
 | `pool.<root>` | Pool contract + lender USDC | Deployer | |
 | `payroll.<root>` | Payroll contract + every employer's treasury | Deployer | |
-| `perabotjaya.<root>` | Employer (owner) account | **Owner full-access key** + **payroll agent function-call key**, both held by the server in P0 | Each Reset demo creates another, e.g. `perabotjaya-7f3a.<root>` (§9.6) |
+| `coffeefactory.<root>` | Employer (owner) account | **Owner full-access key** + **payroll agent function-call key**, both held by the server in P0 | Each Reset demo creates another, e.g. `coffeefactory-7f3a.<root>` (§9.6) |
 | `agent.<root>` | Invoice agent identity | **Function-call key only** | Held by the server (§12) |
 | `relayer.<root>` | Pays gas and the 1 yocto deposit for worker meta-transactions | Full-access key | Held by the server (§12). Strict policy (§8.3) |
 | `escrow.<root>` | Mock bank: receives buyer payment, settles invoices | Full-access key | Mock. Held by the server (§12) |
@@ -192,7 +192,7 @@ Business accounts have readable names. **Worker and lender accounts are pseudony
 
 | Key | On account | `receiver_id` | `method_names` | Allowance | What it cannot do |
 |---|---|---|---|---|---|
-| Payroll agent | `perabotjaya.<root>` (each demo company gets a fresh one) | `payroll.<root>` | `["submit_run", "pay_run"]` | 1 NEAR | Call `tusdc` at all; call `add_payee`, `remove_payee`, `update_cap`, `withdraw` or `cancel_run`; attach any deposit (so it can never satisfy `ft_transfer`'s 1-yocto requirement) |
+| Payroll agent | `coffeefactory.<root>` (each demo company gets a fresh one) | `payroll.<root>` | `["submit_run", "pay_run"]` | 1 NEAR | Call `tusdc` at all; call `add_payee`, `remove_payee`, `update_cap`, `withdraw` or `cancel_run`; attach any deposit (so it can never satisfy `ft_transfer`'s 1-yocto requirement) |
 | Invoice agent | `agent.<root>` | `pool.<root>` | `["attest_invoice"]` | 1 NEAR | Request advances, change the grade table, move pool funds |
 
 A transaction signed with a function-call key is checked by NEAR before it is included in a block, in this order. Each failure comes back as `InvalidTxError::InvalidAccessKeyError(...)`, and none of our code runs:
@@ -339,7 +339,7 @@ A failed, skipped or cancelled line can be paid later in a new run for the same 
 
 `max_lines_per_call` is 20. A 40-worker run takes two `pay_run` calls. `pay_run` reads that 20 from the code, not from the config `new` stored, because a wasm swap does not rewrite state. Each extra successful line burnt about 5.2 Tgas, and every transfer succeeded, so the per-receipt limit is not what binds. The sandbox can prepay the 1000 Tgas protocol cap, and 36 lines fit in that cap. A function-call key with a 1 NEAR allowance cannot prepay 1000 Tgas: the protocol prices allowance at 10× the block gas price plus the action fee, so the largest prepaid gas that key can sign is 995 Tgas. In the sandbox, 35 lines at 995 Tgas succeed. On testnet the same wasm and the same 995 Tgas panic `Exceeded the prepaid gas` while the stored config is still 36 (tx `3A26sakHbdFEyR4gCVKtxSQkBoeJ275CM3yfSp1LYay1`). 20 lines attach 500 Tgas and leave the rest of a 970 Tgas prepaid call for execution. Testnet hashes for the burn check are still open (Q3).
 
-**Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `perabotjaya.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
+**Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `coffeefactory.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
 
 ### 7.4 Pool — at `pool.<root>`
 
@@ -506,6 +506,8 @@ One interface for everything the app reads from or writes to NEAR, so the app ca
 - **`FakeChainClient`** (day 1): returns fixture data and simulates the contract rules and error codes from §7. The app dev builds all screens against it.
 - **`NearChainClient`** (from ~7 Nov): calls the real testnet contracts.
 - Switch with `CHAIN_CLIENT=fake|near`. Both must pass the same test suite for the shared methods.
+- **Transaction waits.** Every send waits until the transaction and all its receipts have executed (`EXECUTED_OPTIMISTIC`), not until the block is final: about 1.8 s a transaction on testnet against 3.9 s (measured 9 Nov 2026). Cross-contract calls are done before the next read. near-api-js reads the next nonce at the same optimistic state and re-signs only on `InvalidNonce`, when the first was never included, so nothing runs twice. Checks that re-read the chain right after sending (seed, fund) read up to 3 times, 1 s apart, before calling a step unfinished. The relayer still returns once the delegate action is included (§8.3).
+- **RPC rate limits.** Free testnet RPCs refuse bursts with HTTP 429. Every RPC request (reads, view calls, transaction sends) retries a 429 with a growing wait (0.5 s doubling, at most 4 s, 7 tries) and, for reads, moves to the next endpoint in `NEAR_RPC_FALLBACK_URLS` first, skipping a throttled endpoint for 30 s (`lib/near/rpc-retry.ts`). Transactions use `NEAR_RPC_URL` only and wait there: dRPC's free plan answers a `send_tx` that runs past 2 s with 408, then 500 on every resend (measured 9 Nov 2026). A retry resends the same signed bytes, so it cannot pay twice. Reads also move on when an endpoint is unreachable or answers 500. near-api-js's own retries are cut to 4 (~4 s) from 12 (~95 s). Contract errors are never retried. Seed snapshots read their 44 accounts 4 at a time.
 
 ### 8.9 Private deposit from any chain (P1) — `lib/deposit`
 
@@ -653,11 +655,12 @@ What it is in three lines, "Who touches crypto? Only the lenders.", links to the
 
 Every run of the demo uses up the demo company: an invoice can be advanced once (R7), a payee is paid once per period (R5), and the agent key's allowance shrinks. **Reset demo** gives the visitor a fresh company:
 
-1. The admin creates `perabotjaya-xxxx.<root>`, registers it as an employer and adds the same 40 worker accounts as payees (during onboarding, so they are active at once).
+1. The admin creates `coffeefactory-xxxx.<root>`, registers it as an employer and adds the same 40 worker accounts as payees (during onboarding, so they are active at once).
 2. Mints the starting treasury (RM18,400 equivalent) into its payroll treasury and tops up the pool so the §4 advance is possible.
 3. Adds the owner's key and a fresh payroll agent function-call key (fresh allowance). Both stay on the server.
 4. Gives the company a fresh synthetic seller TIN and buyer TINs, and generates its invoices (the three in §4 plus the tampered one) from the invoice template, with matching mock MyInvois records.
 5. Every visitor now sees the new company: the demo is shared (§9).
+6. Empties Rahim's wallet: before funding, his leftover tUSDC goes back to `<root>` with an `ft_transfer` signed by his demo key, the activity log is cleared, and his relayer daily limits (§8.3) start over, keeping only a transfer still in flight, so his phone shows RM0.00 and no old sends, and Send home works again the same day. Only Rahim's, because only his phone is shown; the other 39 keep their test balances. If this transfer fails, the reset still finishes.
 
 Rate-limited per visitor, with a daily cap overall. Rough cost ≈0.3 testnet NEAR and ~15 s per reset (estimate). `pnpm demo:reset` runs the same steps from the command line. The same template generator produces the committed fixtures, so local runs, CI and the hosted app use identical files. It needs a pure-JS PDF library (no native build).
 
@@ -885,6 +888,7 @@ Follow `HACKATHON.md` for the exact field rules.
 14. The demo pays October 2026 (`fixtures/company.json`). The contract only accepts the current or previous month (R14), so from 1 December 2026 Run payroll needs that period moved forward.
 15. `update_cap` and `withdraw` (§7.3) are not in the payroll contract yet. The app does not call them.
 16. The app keeps some state in memory and in `apps/web/.data/`: the live demo company, relayer limits, activity log, mock receipts and payout quotes. Run it as one long-lived server (`pnpm --filter web build && pnpm --filter web start`). Serverless hosting would need that state moved to storage such as Supabase (§8.7).
+17. Speed depends on free testnet RPC tiers (FastNEAR, dRPC). Reset demo takes about 40–70 s and each chain write about 2 s (measured 9 Nov 2026, §8.8); under rate limits the app waits and retries. The README asks judges to wait for Reset demo to finish.
 
 ### Future roadmap
 

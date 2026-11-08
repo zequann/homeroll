@@ -31,7 +31,7 @@ import { adminSigner, deriveKey } from "../keys.ts";
 import type { SeedCompany } from "../seed/plan.ts";
 import { type SeedInput, seedCompany } from "../seed/shell.ts";
 import { type RowStore, rowStore } from "../store/rows.ts";
-import { configureRpc, transferNear, viewAccount } from "./rpc.ts";
+import { callMethod, configureRpc, ftBalanceOf, transferNear, viewAccount } from "./rpc.ts";
 
 type DemoEmployerId = AccountId;
 type Tin = string;
@@ -247,6 +247,38 @@ async function reclaimEmployerNear(input: SeedInput, employer: AccountId): Promi
   return true;
 }
 
+// ft_transfer with its 1 yocto: the same 15 Tgas the worker's own transfers attach.
+const GAS_EMPTY_WALLET = 15n * 1_000_000_000_000n;
+
+/**
+ * Reset demo (SPEC §9.6 step 6): the next visitor sees Rahim's phone at RM0.00, as on a fresh
+ * account. A new company reuses the same worker accounts, so his tUSDC from earlier runs goes back
+ * to the root, which funds the next company. Only Rahim's: no other worker's wallet is shown.
+ * Rahim's own demo key signs; this is test money and never touches a payee list or a run.
+ * Returns the amount moved. A failure leaves the balance and does not stop the reset.
+ */
+export async function emptyShownWorkerWallet(input: SeedInput, base: Fixtures): Promise<bigint> {
+  const rahim = base.workers[0];
+  if (!rahim || input.seedHex === null) return 0n;
+  configureRpc(input.rpcUrl);
+  const { tusdc } = homerollAccounts(input.root);
+  try {
+    const balance = await ftBalanceOf(tusdc, rahim.accountId);
+    if (balance <= 0n) return 0n;
+    const key = deriveKey(input.seedHex, rahim.accountId, "worker");
+    await callMethod(key, tusdc, {
+      method: "ft_transfer",
+      args: { receiver_id: input.root, amount: balance.toString(), memo: "reset-demo" },
+      gas: GAS_EMPTY_WALLET,
+      depositYocto: 1n,
+    });
+    return balance;
+  } catch (e) {
+    console.warn("[demo] reset could not empty the worker's wallet:", e);
+    return 0n;
+  }
+}
+
 function assertSeedReady(input: SeedInput): void {
   if (!input.adminSecretKey) throw new Error("admin_key_missing");
   if (input.seedHex === null) throw new Error("seed_missing");
@@ -322,7 +354,12 @@ async function runFund(input: SeedInput, employer: DemoEmployerId, base: Fixture
   const floors = companyFloors(base);
   let actions = planFund(await readFundSnapshot(accounts), floors, accounts);
   for (const action of actions) await applyFundAction(action, admin);
-  actions = planFund(await readFundSnapshot(accounts), floors, accounts);
+  // Sends wait until executed, not final: an RPC node a block behind may need another read
+  for (let read = 0; read < 3; read++) {
+    if (read > 0) await new Promise((resolve) => setTimeout(resolve, 1_000));
+    actions = planFund(await readFundSnapshot(accounts), floors, accounts);
+    if (actions.length === 0) break;
+  }
   if (actions.length > 0) throw new Error("fund plan did not converge");
   // The mock solver's float and the demo lender's account, for private deposits (SPEC §8.9)
   await provisionDepositRoute(
@@ -395,6 +432,8 @@ export async function provisionDemoCompany(
       throw new Error(`seed did not converge: ${seedReport.outcome}`);
     }
 
+    // Before funding, so the returned tUSDC counts toward what the root must mint
+    await emptyShownWorkerWallet(input, base);
     await runFund(input, company.employer, base);
 
     ledger = { root: input.root, live: company, provisioning: null };

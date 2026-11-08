@@ -1,9 +1,11 @@
 "use client";
 
 import { ShieldCheck } from "@phosphor-icons/react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { useActionTransition } from "@/components/useActionTransition";
 import {
   type DepositQuoteView,
   type DepositResult,
@@ -47,7 +49,7 @@ export function PrivateDeposit({
   const [text, setText] = useState("1000");
   const [quote, setQuote] = useState<DepositQuoteView | null>(null);
   const [result, setResult] = useState<DepositResult | null>(null);
-  const [pending, start] = useTransition();
+  const [pending, start, failed] = useActionTransition();
 
   const asset = assets.find((a) => a.key === assetKey);
   // Shape only, and not zero. The server parses the amount exactly, in base units.
@@ -179,6 +181,7 @@ export function PrivateDeposit({
       >
         Deposit privately
       </Button>
+      <ActionFailed show={failed} />
     </div>
   );
 }

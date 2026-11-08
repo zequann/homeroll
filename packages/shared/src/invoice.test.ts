@@ -40,7 +40,7 @@ describe("invoiceHash (SPEC §7.4)", () => {
 describe("renderInvoiceText", () => {
   const doc = {
     ...fields,
-    sellerName: "Perabot Jaya Sdn Bhd",
+    sellerName: "Coffee Factory Sdn Bhd",
     buyerName: "MegaHome Retail Sdn Bhd",
     dueDate: "2026-12-16",
     poNumber: "PO-88213",

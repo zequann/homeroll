@@ -10,7 +10,7 @@ import {
 } from "./plan.ts";
 
 const ROOT = "homeroll.testnet";
-const EMPLOYER = "perabotjaya.homeroll.testnet";
+const EMPLOYER = "coffeefactory.homeroll.testnet";
 const OWNER = "ed25519:owner";
 const PAYROLL = "ed25519:payroll";
 const INVOICE = "ed25519:invoice";

@@ -211,7 +211,7 @@ async fn pool_attest_fixture() -> TestResult<(
     )
     .await?
     .assert_success();
-    let employer = env.create_user("perabotjaya").await?;
+    let employer = env.create_user("coffeefactory").await?;
     let payroll = payroll_account(&env.root);
     register_tusdc_storage(&env, &tusdc, &payroll).await?;
     env.call(

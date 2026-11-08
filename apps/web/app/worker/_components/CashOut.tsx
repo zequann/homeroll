@@ -1,9 +1,11 @@
 "use client";
 
 import { Bank } from "@phosphor-icons/react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { ActionFailed } from "@/components/ActionFailed";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { useActionTransition } from "@/components/useActionTransition";
 import { CASHOUT_DESTINATIONS, type CashoutDestination, cashoutQuote } from "@/lib/cashout";
 import { formatRm, parseRm, type Sen } from "@/lib/fx";
 import { cashOut } from "../actions";
@@ -12,7 +14,7 @@ import styles from "./worker.module.css";
 export function CashOut({ balanceSen }: { balanceSen: Sen }) {
   const [text, setText] = useState("200");
   const [destination, setDestination] = useState<CashoutDestination>("tng");
-  const [pending, start] = useTransition();
+  const [pending, start, failed] = useActionTransition();
   const [error, setError] = useState<string | null>(null);
 
   const amount = parseRm(text);
@@ -113,6 +115,7 @@ export function CashOut({ balanceSen }: { balanceSen: Sen }) {
       >
         Cash out
       </Button>
+      <ActionFailed show={failed} />
     </div>
   );
 }
