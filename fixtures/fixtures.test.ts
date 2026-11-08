@@ -51,7 +51,7 @@ describe("fixtures", () => {
   });
 
   it("builds account IDs from the root it is given", () => {
-    expect(f.company.accountId).toBe(`perabotjaya.${ROOT}`);
+    expect(f.company.accountId).toBe(`coffeefactory.${ROOT}`);
     expect(f.lender.accountId).toBe(`l-4f9t2c.${ROOT}`);
   });
 

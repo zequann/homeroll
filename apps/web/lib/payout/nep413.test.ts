@@ -11,8 +11,8 @@ import {
   verifyNep413,
 } from "./nep413";
 
-const owner = deriveKey("ab".repeat(32), "perabotjaya.homeroll-test.testnet", "owner");
-const other = deriveKey("ab".repeat(32), "perabotjaya.homeroll-test.testnet", "payrollAgent");
+const owner = deriveKey("ab".repeat(32), "coffeefactory.homeroll-test.testnet", "owner");
+const other = deriveKey("ab".repeat(32), "coffeefactory.homeroll-test.testnet", "payrollAgent");
 const payload: Nep413Payload = {
   message: JSON.stringify({
     signer_id: owner.accountId,

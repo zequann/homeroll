@@ -75,7 +75,7 @@ All surfaces are one Next.js app on Vercel. No native app, no app store.
 
 All names and numbers are **synthetic**. Fixtures in `fixtures/` must match these tables exactly. Every Reset demo (§9.6) creates a fresh copy of this company with new synthetic tax numbers (TINs); names and amounts stay the same.
 
-**Company:** Perabot Jaya Sdn Bhd, furniture maker in Muar. 40 foreign workers.
+**Company:** Coffee Factory Sdn Bhd, coffee maker in Muar. 40 foreign workers.
 **Start (Mon 20 Oct 2026):** treasury RM18,400. Payroll on Fri 31 Oct: **RM78,000**. Buffer to keep: RM5,000. The October period stays open for runs until 30 Nov (R14), which covers the build and judging.
 
 ### Invoices
@@ -178,7 +178,7 @@ Business accounts have readable names. **Worker and lender accounts are pseudony
 | `tusdc.<root>` | Mock NEP-141 "Test USDC", 6 decimals | Deployer | Mintable by admin on testnet only |
 | `pool.<root>` | Pool contract + lender USDC | Deployer | |
 | `payroll.<root>` | Payroll contract + every employer's treasury | Deployer | |
-| `perabotjaya.<root>` | Employer (owner) account | **Owner full-access key** + **payroll agent function-call key**, both held by the server in P0 | Each Reset demo creates another, e.g. `perabotjaya-7f3a.<root>` (§9.6) |
+| `coffeefactory.<root>` | Employer (owner) account | **Owner full-access key** + **payroll agent function-call key**, both held by the server in P0 | Each Reset demo creates another, e.g. `coffeefactory-7f3a.<root>` (§9.6) |
 | `agent.<root>` | Invoice agent identity | **Function-call key only** | Held by the server (§12) |
 | `relayer.<root>` | Pays gas and the 1 yocto deposit for worker meta-transactions | Full-access key | Held by the server (§12). Strict policy (§8.3) |
 | `escrow.<root>` | Mock bank: receives buyer payment, settles invoices | Full-access key | Mock. Held by the server (§12) |
@@ -192,7 +192,7 @@ Business accounts have readable names. **Worker and lender accounts are pseudony
 
 | Key | On account | `receiver_id` | `method_names` | Allowance | What it cannot do |
 |---|---|---|---|---|---|
-| Payroll agent | `perabotjaya.<root>` (each demo company gets a fresh one) | `payroll.<root>` | `["submit_run", "pay_run"]` | 1 NEAR | Call `tusdc` at all; call `add_payee`, `remove_payee`, `update_cap`, `withdraw` or `cancel_run`; attach any deposit (so it can never satisfy `ft_transfer`'s 1-yocto requirement) |
+| Payroll agent | `coffeefactory.<root>` (each demo company gets a fresh one) | `payroll.<root>` | `["submit_run", "pay_run"]` | 1 NEAR | Call `tusdc` at all; call `add_payee`, `remove_payee`, `update_cap`, `withdraw` or `cancel_run`; attach any deposit (so it can never satisfy `ft_transfer`'s 1-yocto requirement) |
 | Invoice agent | `agent.<root>` | `pool.<root>` | `["attest_invoice"]` | 1 NEAR | Request advances, change the grade table, move pool funds |
 
 A transaction signed with a function-call key is checked by NEAR before it is included in a block, in this order. Each failure comes back as `InvalidTxError::InvalidAccessKeyError(...)`, and none of our code runs:
@@ -339,7 +339,7 @@ A failed, skipped or cancelled line can be paid later in a new run for the same 
 
 `max_lines_per_call` is 20. A 40-worker run takes two `pay_run` calls. `pay_run` reads that 20 from the code, not from the config `new` stored, because a wasm swap does not rewrite state. Each extra successful line burnt about 5.2 Tgas, and every transfer succeeded, so the per-receipt limit is not what binds. The sandbox can prepay the 1000 Tgas protocol cap, and 36 lines fit in that cap. A function-call key with a 1 NEAR allowance cannot prepay 1000 Tgas: the protocol prices allowance at 10× the block gas price plus the action fee, so the largest prepaid gas that key can sign is 995 Tgas. In the sandbox, 35 lines at 995 Tgas succeed. On testnet the same wasm and the same 995 Tgas panic `Exceeded the prepaid gas` while the stored config is still 36 (tx `3A26sakHbdFEyR4gCVKtxSQkBoeJ275CM3yfSp1LYay1`). 20 lines attach 500 Tgas and leave the rest of a 970 Tgas prepaid call for execution. Testnet hashes for the burn check are still open (Q3).
 
-**Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `perabotjaya.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
+**Why the guard holds even with `predecessor == employer`:** both the owner's key and the agent's key sign as `coffeefactory.<root>`. The contract cannot tell them apart and does not need to: the agent's key is restricted by the protocol to `submit_run` and `pay_run`, so `add_payee`, `update_cap`, `remove_payee`, `withdraw` and `cancel_run` are reachable only with the owner's key. `pay_run` takes only a run id, so the agent can carry out a run the contract approved but cannot change it.
 
 ### 7.4 Pool — at `pool.<root>`
 
@@ -653,7 +653,7 @@ What it is in three lines, "Who touches crypto? Only the lenders.", links to the
 
 Every run of the demo uses up the demo company: an invoice can be advanced once (R7), a payee is paid once per period (R5), and the agent key's allowance shrinks. **Reset demo** gives the visitor a fresh company:
 
-1. The admin creates `perabotjaya-xxxx.<root>`, registers it as an employer and adds the same 40 worker accounts as payees (during onboarding, so they are active at once).
+1. The admin creates `coffeefactory-xxxx.<root>`, registers it as an employer and adds the same 40 worker accounts as payees (during onboarding, so they are active at once).
 2. Mints the starting treasury (RM18,400 equivalent) into its payroll treasury and tops up the pool so the §4 advance is possible.
 3. Adds the owner's key and a fresh payroll agent function-call key (fresh allowance). Both stay on the server.
 4. Gives the company a fresh synthetic seller TIN and buyer TINs, and generates its invoices (the three in §4 plus the tampered one) from the invoice template, with matching mock MyInvois records.

@@ -101,7 +101,7 @@ export function companyFloors(fixtures: Fixtures): FundFloors {
 export function fundAccounts(
   root: AccountId,
   escrowPublicKey: string,
-  ownerLabel = "perabotjaya",
+  ownerLabel = "coffeefactory",
 ): FundAccounts {
   const accounts = accountsFor(root);
   return {

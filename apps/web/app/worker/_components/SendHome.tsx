@@ -47,7 +47,7 @@ export function SendHome({
   }, [amount, liveQuotes]);
 
   const hint = !hasBalance
-    ? "You have RM0.00. Your October wage arrives when Perabot Jaya runs payroll."
+    ? "You have RM0.00. Your October wage arrives when Coffee Factory runs payroll."
     : amount === null || amount === 0
       ? "Enter an amount in RM, like 800 or 800.50."
       : tooMuch

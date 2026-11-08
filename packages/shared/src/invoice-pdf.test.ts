@@ -4,7 +4,7 @@ import { renderInvoiceText } from "./invoice";
 import { extractInvoiceText, renderInvoicePdf } from "./invoice-pdf";
 
 const doc = {
-  sellerName: "Perabot Jaya Sdn Bhd",
+  sellerName: "Coffee Factory Sdn Bhd",
   sellerTin: "SYN-C0000000001",
   buyerName: "MegaHome Retail Sdn Bhd",
   buyerTin: "SYN-C0000001043",

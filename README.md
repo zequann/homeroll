@@ -8,7 +8,7 @@ Built for NEAR HACKATHON. Everything runs on NEAR testnet with synthetic data. N
 
 ## The problem
 
-- **Cash on payday.** The demo company, Perabot Jaya Sdn Bhd (synthetic), has RM18,400 in its treasury and owes RM78,000 in wages on 31 October, while RM150,000 of invoices are due in 60 days.
+- **Cash on payday.** The demo company, Coffee Factory Sdn Bhd (synthetic), has RM18,400 in its treasury and owes RM78,000 in wages on 31 October, while RM150,000 of invoices are due in 60 days.
 - **Cost of sending money home.** Sending money from Malaysia to Bangladesh costs 7.51% all-in on average (World Bank Remittance Prices Worldwide, Q3 2025, sending USD 200).
 - **Agents that can be fooled.** AI agents can read invoices and timesheets, but a fooled agent must not be able to move money it should not.
 
@@ -52,7 +52,7 @@ CHAIN_CLIENT=fake pnpm dev   # http://localhost:3000, fixture data, no chain nee
 
 Do X → see Y:
 
-1. Open `/` and press **Start the demo** → `/owner` opens as Perabot Jaya Sdn Bhd. The treasury shows RM18,400 and payroll is short. There is no wallet to connect: everyone shares the same demo accounts, and each page signs as its own role on the server.
+1. Open `/` and press **Start the demo** → `/owner` opens as Coffee Factory Sdn Bhd. The treasury shows RM18,400 and payroll is short. There is no wallet to connect: everyone shares the same demo accounts, and each page signs as its own role on the server.
 2. On **Invoices**, press **Check with agent** on INV-2026-1043 → four checks, Grade A, a RM120,000 offer and a "Mock model" badge. Press **Take advance** → the treasury grows by RM120,000.
 3. Press **Run payroll** → the contract checks the run, the owner signs a payout intent (NEP-413), and the payout rail checks it before anything is paid. The **Payout** panel shows the intent hash and each payout hash, under a "Confidential layer: simulated" badge.
 4. Open **Worker** in the toolbar → Rahim's phone shows RM1,950.00 within seconds. **Send home** and **Cash out** go through the relayer policy to mock partners.
