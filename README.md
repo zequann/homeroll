@@ -21,6 +21,13 @@ Built for NEAR HACKATHON. Everything runs on NEAR testnet with synthetic data. N
 | `/lender` | Lender | See the pool. **Deposit privately** from another chain: a live quote, mocked Confidential Intents routing and delivery, and a real testnet pool deposit from a pseudonymous account. |
 | `/lab` | Judge | Run six attacks that fool the agents on purpose. Each shows who refused, the exact error, and that no money moved. **Reset demo** gives the next visitor a fresh company. |
 
+## Tracks
+
+- **Real-World Money (`realworld`):** payroll, invoice advances and remittances for a Malaysian SME, paid in a stablecoin (test USDC), with live NEAR Intents quotes for the swap leg and gasless meta-transactions for workers.
+- **AI Security & Defense (`security`):** AI agents propose payments but cannot move money they should not. Function-call access keys, contract-side spending limits (wage cap, advance cap, treasury buffer) and six attacks in `/lab` that fool the agents on purpose and are refused.
+
+NEAR features used: function-call access keys, meta-transactions (NEP-366), NEAR Intents (1Click dry-run quotes), NEP-413 signed messages, NEP-141 tokens, sub-accounts.
+
 ## How NEAR enforces it
 
 - **Function-call access keys.** The payroll agent's key can call only `payroll.submit_run` and `payroll.pay_run`, and cannot attach a deposit. When it tries `tusdc.ft_transfer`, NEAR rejects the transaction before it is included, so none of our code runs (attack 05).
@@ -154,6 +161,10 @@ All code in this repo was written during NEAR HACKATHON: the first commit is fro
 - The contract workspace follows the `cargo near new` template.
 - Most of the code was written with AI coding agents (Claude Code and Cursor), working from `SPEC.md` and `CLAUDE.md`; their commits carry a `Co-Authored-By` line.
 - `.agents/skills/` holds two third-party agent skills used for UI design work, each with its own license: `apple-design` (emilkowalski/skills) and `stageshow` (benjitaylor/skills). The app does not import them.
+
+## License
+
+MIT, see [`LICENSE`](LICENSE). The third-party skills in `.agents/skills/` keep their own licenses.
 
 ## Stack
 

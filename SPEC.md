@@ -741,6 +741,7 @@ homeroll/
     adr/                  # decisions with trade-offs
     agents/               # config for the coding-agent skills
   .scratch/               # local issue tracker, one folder per feature (not committed)
+  LICENSE                 # MIT (rule Q-014)
   contracts/              # Cargo workspace                         — on-chain dev
     common/               # error codes shared by the contracts and tests
     tusdc/  factory/  payroll/  pool/
@@ -863,7 +864,7 @@ No calendar. Do the rows in order. A row is done when its check passes.
 Follow `HACKATHON.md` for the exact field rules, and re-read the live copy (https://nearhackathon.com/HACKATHON.md) before submitting. The repo copy was refreshed on 10 Nov 2026.
 
 - [ ] Repo public before 14 Nov 23:59 UTC, with a working prototype. It stays public through judging.
-- [ ] A `LICENSE` file in the repo root (rule Q-014; MIT is fine).
+- [x] A `LICENSE` file in the repo root (rule Q-014): MIT.
 - [ ] README written for human and AI judges: what it is, the problem, "do X → see Y" steps, why NEAR, known limitations, related work. No marketing. It lists libraries, templates and AI coding tools used (Q-005) and says all code was written in the hackathon window (first commit 3 Nov 2026, Q-001).
 - [ ] Public post on the on-chain dev's X saying it was built at NEAR HACKATHON, tagging @NEARProtocol and #NEARHackathon (optionally @NearLegion and @NearBuilders), with the demo video attached. A video is required when judges cannot open a hosted demo (Q-012).
 - [ ] Hosted demo, if any, linked from the README and kept up until at least 18 Nov 2026, ideally 25 Nov (Q-012).

@@ -65,6 +65,7 @@ docs/               adr/ (decisions with trade-offs), agents/ (skill config)
 .scratch/           local issue tracker, one folder per feature (not committed)
 .github/workflows/  ci.yml: Biome, typecheck, vitest, cargo fmt, clippy, cargo test
 GLOSSARY.md         domain terms: use these words in code, tests, UI and issues
+LICENSE             MIT
 HACKATHON.md        official agent brief from the organizers (dates, rules, submission API)
 ```
 
