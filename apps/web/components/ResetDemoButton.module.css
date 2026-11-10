@@ -2,8 +2,9 @@
   position: relative;
   display: inline-flex;
 }
-/* Below the toolbar, not inside it, so a failed reset never changes the bar's height */
-.error {
+/* Below the toolbar, not inside it, so a note never changes the bar's height */
+.error,
+.note {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
@@ -12,6 +13,10 @@
   border-radius: var(--r-control);
   background: var(--surface);
   box-shadow: var(--shadow-satellite);
+}
+/* It covers part of the page for a few seconds: let clicks through */
+.note {
+  pointer-events: none;
 }
 
 @media (max-width: 639px) {

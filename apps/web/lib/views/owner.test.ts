@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getChainClient } from "@/lib/near";
 import type { ChainClient } from "@/lib/near/client";
-import { loadOwnerView, type OwnerTab } from "./owner";
+import { CompanyNotFound, loadOwnerView, type OwnerTab } from "./owner";
 
 // Free RPC endpoints rate-limit bursts, so each owner page load reads only what it shows.
 const READS = [
@@ -45,5 +45,12 @@ describe("owner page chain reads", () => {
   it("still shows the invoices and keys on their own tabs", async () => {
     expect((await loadOwnerView("invoices")).invoices).toHaveLength(3);
     expect((await loadOwnerView("agent-keys")).keys.length).toBeGreaterThan(0);
+  });
+});
+
+describe("owner page without a company", () => {
+  it("throws CompanyNotFound, which the page turns into a Reset demo prompt", async () => {
+    vi.spyOn(getChainClient(), "getEmployer").mockResolvedValue(null);
+    await expect(loadOwnerView("pay-lines")).rejects.toBeInstanceOf(CompanyNotFound);
   });
 });

@@ -3,7 +3,7 @@ import { Money } from "@/components/Money";
 import { Segmented } from "@/components/Segmented";
 import { getFixtures, syncLiveCompany } from "@/lib/near";
 import { loadPayoutPanel } from "@/lib/payout/server";
-import { loadOwnerView } from "@/lib/views/owner";
+import { CompanyNotFound, loadOwnerView } from "@/lib/views/owner";
 import { Activity } from "./_components/Activity";
 import { AgentKeys } from "./_components/AgentKeys";
 import { ConfidentialPayout } from "./_components/ConfidentialPayout";
@@ -34,9 +34,10 @@ export default async function OwnerPage({
   await syncLiveCompany();
   const tab = tabSchema.parse((await searchParams).tab);
   const [view, payout] = await Promise.all([
-    loadOwnerView(tab),
+    loadOwnerView(tab).catch(noCompanyYet),
     loadPayoutPanel(getFixtures().company.accountId),
   ]);
+  if (!view) return <NoCompanyYet />;
 
   return (
     <main className="page">
@@ -88,6 +89,32 @@ export default async function OwnerPage({
           {tab === "workers" ? <Workers rows={view.payees} onboarding={view.onboarding} /> : null}
           {tab === "agent-keys" ? <AgentKeys keys={view.keys} mode={view.mode} /> : null}
           {tab === "activity" ? <Activity rows={view.activity} /> : null}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+/** Only the missing company is expected here; anything else still reaches the error page. */
+function noCompanyYet(e: unknown): null {
+  if (e instanceof CompanyNotFound) return null;
+  throw e;
+}
+
+/** A new deploy has no demo company until the first Reset demo creates one (SPEC §9.6). */
+function NoCompanyYet() {
+  return (
+    <main className="page">
+      <div className={styles.console}>
+        <section className={styles.panel} aria-labelledby="owner-title">
+          <h1 id="owner-title" className="t-title">
+            No demo company yet
+          </h1>
+          <p className="t-body ink-2">
+            This site has not created its demo company on testnet. Press <strong>Reset demo</strong>{" "}
+            in the toolbar: it makes a fresh company in about 40–70 seconds, then this page shows
+            it.
+          </p>
         </section>
       </div>
     </main>
