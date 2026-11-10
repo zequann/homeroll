@@ -545,7 +545,9 @@ interface DepositRoute {
   After the deposit the page shows the shares minted, both tx hashes with explorer links, and "On-chain this is `l-xxxxxx.<root>`. Your name is not on-chain."
 - The 1Click terms in §8.4 apply: no stored quote responses, no "partner" wording for NEAR Intents.
 
-### 8.10 Rhea Lend rate (P1) — `lib/rhea`
+### 8.10 Rhea Lend rate (P1, not built) — `lib/rhea`
+
+**Not in this build.** There is no `lib/rhea` and `/lender` has no Rhea card. This section is the design for when it is built.
 
 `/lender` shows what idle pool cash *could* earn in Rhea Lend (hackathon partner), as information only (D18). Nothing is deposited into Rhea; that is future roadmap (§18).
 
@@ -643,9 +645,9 @@ One card per attack (§11) with "Run attack" → shows what the agent did, what 
 
 ### 9.4 Lender — `/lender` (P1)
 
-Private deposit from any chain (§8.9): pick an asset and its chain, enter an amount, see the quote in USDC on NEAR and the three labelled steps, click **Deposit privately**. See the pool (NAV, available, lent to employers, fees earned) and your position (your pseudonymous account, shares, and their value at current NAV). Depositing tUSDC already on NEAR and the Rhea card (§8.10) are separate rows.
+Private deposit from any chain (§8.9): pick an asset and its chain, enter an amount, see the quote in USDC on NEAR and the three labelled steps, click **Deposit privately**. See the pool (NAV, available, lent to employers, fees earned) and your position (your pseudonymous account, shares, and their value at current NAV). Depositing tUSDC already on NEAR and the Rhea card (§8.10, not built) are separate rows.
 
-Idle cash card: "Idle cash: X USDC · Rhea Lend pays Y% now" with the live, read-only rate from §8.10.
+Idle cash card (not built): "Idle cash: X USDC · Rhea Lend pays Y% now" with the live, read-only rate from §8.10.
 
 ### 9.5 Landing — `/`
 
@@ -736,24 +738,26 @@ homeroll/
   GLOSSARY.md             # domain terms used in code, UI and issues
   HACKATHON.md            # official agent brief from the organizers
   docs/
-    architecture.md       # diagrams + account/key table
     adr/                  # decisions with trade-offs
     agents/               # config for the coding-agent skills
-  .scratch/               # local issue tracker, one folder per feature
+  .scratch/               # local issue tracker, one folder per feature (not committed)
   contracts/              # Cargo workspace                         — on-chain dev
     common/               # error codes shared by the contracts and tests
     tusdc/  factory/  payroll/  pool/
     tests/                # sandbox integration tests (near-api + near-sandbox)
   apps/web/               # Next.js (App Router, TypeScript strict)
-    app/(owner)/owner/  app/(worker)/worker/  app/lab/  app/lender/   — app dev
+    app/owner/  app/worker/  app/lab/  app/lender/                    — app dev
     app/api/agents/  app/api/relay/  app/api/demo/                    — on-chain dev
     app/api/mock/                                                      — app dev
     lib/near/             # ChainClient: fake (app dev), near (on-chain dev)
     lib/agents/           # payroll + invoice agents, InferenceClient + MockInference — on-chain dev
-    lib/remit/  lib/cashout/  lib/fx/  lib/intents/  lib/deposit/  lib/rhea/  — app dev
+    lib/remit/  lib/cashout/  lib/fx/  lib/intents/  lib/deposit/  — app dev (lib/rhea/ not built, §8.10)
+    lib/payout/           # mock confidential payout rail (§8.11)
+    lib/store/            # off-chain rows: Supabase or in memory (§8.7)
+    e2e/                  # Playwright + axe (§14)
   packages/shared/        # invoice hash, invoice template + generator, types, error codes, fixtures loader
   fixtures/               # synthetic company, 40 workers, invoices (generated), timesheets — app dev
-  scripts/                # deploy-testnet, seed, demo-reset, attacks/, measure/ — on-chain dev
+  scripts/                # deploy-testnet, seed-testnet, demo-reset, fund-company, prove-relay, upgrade-payroll-testnet, attacks/ — on-chain dev
   .github/workflows/ci.yml
 ```
 
@@ -763,9 +767,9 @@ homeroll/
 
 - **Contracts:** unit tests + sandbox integration tests (`near-api` + `near-sandbox`, contracts built with `cargo near`) for every rule in §11, including gas measurement for `submit_run` and `pay_run`.
 - **Web:** `vitest` for `lib/*` (fx, hash, grading rules, relayer policy with one test per rule, model-output schema, mock model, chain client).
-- **Attacks:** `pnpm attacks` against a sandbox in CI.
+- **Attacks:** `pnpm attacks` against the live testnet company, run by hand (it needs `apps/web/.env.local`); not in CI. The same attack code runs in vitest against the fake chain on every CI run.
 - **E2E (P1, built):** Playwright in `apps/web/e2e`. The happy path: invoice → advance → payroll → send home → settle, then Reset demo and the same path again. Also every owner control (reserve, cancel, remove mid-run, finish paying, add back, pay missed worker, add payee), the six attacks, a private deposit, the mock 1Click routes, and the toolbar (every page, no wallet or sign-in step, Reset demo once). Every page must load without console errors and pass axe's WCAG 2.1 A and AA checks, and the worker pages must fit a 390 px phone without sideways scroll. `pnpm test:e2e` runs it on the fake chain; `pnpm --filter web e2e:testnet` runs it, minus the lender deposit (live quotes vary), against testnet.
-- **CI:** Biome, typecheck, `cargo fmt`, `cargo clippy -D warnings`, `cargo test` (unit + sandbox), vitest, attacks. Must be green on `main`.
+- **CI** (`.github/workflows/ci.yml`): Biome, typecheck, `cargo fmt`, `cargo clippy -D warnings`, `cargo test` (unit + sandbox), vitest. Must be green on `main`. Playwright and `pnpm attacks` on testnet are run by hand before a merge.
 - **One-command local run (P1):** `pnpm demo` starts a local sandbox, deploys, seeds, and runs the app against it with all mocks.
 
 ---
@@ -783,7 +787,7 @@ homeroll/
 | D5 | **Worker and lender accounts are pseudonymous.** Business accounts keep readable names. |
 | D6 | **Team of two, both developers.** Work is split by area of the repo (§16). |
 | D7 | Owner and workers sign with **demo keys held by the server** in P0, behind a "Demo mode" label. Every visitor shares the same demo accounts, and each page signs as its own role, so there is no wallet step (§9). Real wallet sign-in (`@hot-labs/near-connect`) is P1. |
-| D8 | **Submit once, at the end.** A submission cannot be edited. The organizer deadline stays in §17 and `HACKATHON.md`. |
+| D8 | **Submit once, at the end.** A submission cannot be edited directly; mistakes go through the organizers' request-changes page, and the same repo cannot be submitted twice. The organizer deadline stays in §17 and `HACKATHON.md`. |
 | D9 | **Payroll runs are checked whole, then paid in batches** (`submit_run` + `pay_run`). Several runs per period are allowed; a payee is paid at most once per period. ADR-0001. |
 | D10 | **The Homeroll admin onboards employers**, with a payee limit and a minimum first lender deposit. ADR-0002. |
 | D11 | **Tracks: `realworld` (main) and `security`.** `privacy` and `business` are dropped: there is no real private inference, and a person runs payroll. |
@@ -795,7 +799,7 @@ homeroll/
 | D17 | **Lenders can deposit from any chain** NEAR Intents supports (P1, §8.9): live quote, mock delivery to the lender's own account, pool contract unchanged. |
 | D19 | **Lender deposits are private, half real and half mocked** (P1, §8.9). Real: pseudonymous `l-xxxxxx` lender accounts and the testnet pool deposit. Mocked: Confidential Intents routing, because Confidential Intents runs on mainnet only, and confidential 1Click quotes are refused without user authentication. The demo says production would use it, and claims only what it hides: the link between the source wallet and the pool account, not amounts. |
 | D20 | **Payday goes through a mocked Confidential Intents payout rail, and the payroll contract stays the guard** (§8.11). It does not use a custodial vault: the contract's checks (R3–R6), the agent's function-call key and the reserved run stay. The owner signs a NEP-413 payout intent built from the contract's reserved lines, and the rail checks it (R17) before `pay_run`. The UI labels the confidential layer as simulated and never claims privacy. |
-| D18 | **Rhea Lend: live rate shown, no money moved.** P1: `/lender` shows Rhea Lend's live USDC supply rate from a read-only mainnet view call (§8.10). Moving idle pool cash into Rhea is future roadmap only (§18). |
+| D18 | **Rhea Lend: live rate shown, no money moved.** P1, not built in this build: `/lender` shows Rhea Lend's live USDC supply rate from a read-only mainnet view call (§8.10). Moving idle pool cash into Rhea is future roadmap only (§18). |
 
 ### Open questions
 
@@ -841,7 +845,7 @@ No calendar. Do the rows in order. A row is done when its check passes.
 | 2 | `tusdc`, factory, payroll with tests; gas measurement (Q3) | Owner console and worker app screens on fake data | Payroll rules R3–R6 pass in sandbox |
 | 3 | Pool with tests, deploy to testnet, relayer | Mock partners, Intents quote, send-home and cash-out screens | A worker sends a gasless `ft_transfer` on testnet |
 | 4 | Invoice agent (mock model), payroll agent with function-call key | Switch screens to `NearChainClient` | Demo steps 1–3 run from the UI on testnet |
-| 5 | Five attack scripts | Attack lab page | `pnpm attacks` all pass |
+| 5 | Six attack scripts (06 added with §8.11) | Attack lab page | `pnpm attacks` all pass |
 | 6 | End-to-end runs and bug fixes. Reset demo (§9.6) is part of this step | same | Three clean runs in a row |
 | 7 | README technical sections, architecture diagram | Record and edit video, README intro | Video under 2.5 minutes |
 | 8 | Post demo on own X, then submit | Final review of README and video | Submitted |
@@ -849,22 +853,24 @@ No calendar. Do the rows in order. A row is done when its check passes.
 ### Priorities
 
 - **P0 (demo depends on it):** §7 contracts, §8.1–8.8, §9.1–9.3, §9.6, §11 attacks, README.
-- **P1:** `/lender` with private deposit from any chain (§8.9) and the Rhea Lend rate card (§8.10), worker claim flow, real wallet sign-in, `pnpm demo`, Playwright, "drain the relayer" lab card.
+- **P1:** `/lender` with private deposit from any chain (§8.9) (built), the Rhea Lend rate card (§8.10, not built), worker claim flow, real wallet sign-in, `pnpm demo`, Playwright, "drain the relayer" lab card.
 - **P2:** real Confidential Intents (mainnet) for lender deposits and wages, second corridor (Indonesia or Nepal), real private inference on NEAR AI Cloud, a separate HR role, scheduled payroll. Anything needing real funds stays out.
 
 ---
 
 ## 17. Submission checklist (from the hackathon rules)
 
-Follow `HACKATHON.md` for the exact field rules.
+Follow `HACKATHON.md` for the exact field rules, and re-read the live copy (https://nearhackathon.com/HACKATHON.md) before submitting. The repo copy was refreshed on 10 Nov 2026.
 
-- [ ] Repo public before 14 Nov 23:59 UTC, with a working prototype.
-- [ ] README written for human and AI judges: what it is, the problem, "do X → see Y" steps, why NEAR, known limitations, related work. No marketing.
-- [ ] Public post on the on-chain dev's X saying it was built at NEAR HACKATHON, with demo video or screenshots.
+- [ ] Repo public before 14 Nov 23:59 UTC, with a working prototype. It stays public through judging.
+- [ ] A `LICENSE` file in the repo root (rule Q-014; MIT is fine).
+- [ ] README written for human and AI judges: what it is, the problem, "do X → see Y" steps, why NEAR, known limitations, related work. No marketing. It lists libraries, templates and AI coding tools used (Q-005) and says all code was written in the hackathon window (first commit 3 Nov 2026, Q-001).
+- [ ] Public post on the on-chain dev's X saying it was built at NEAR HACKATHON, tagging @NEARProtocol and #NEARHackathon (optionally @NearLegion and @NearBuilders), with the demo video attached. A video is required when judges cannot open a hosted demo (Q-012).
+- [ ] Hosted demo, if any, linked from the README and kept up until at least 18 Nov 2026, ideally 25 Nov (Q-012).
 - [ ] Mainnet NEAR account for the prize, created by the team (an implicit account is free).
-- [ ] Submission (form or API): project name, team lead, email, team size `2 - 4`, tracks `["realworld","security"]`, prize account, repo link, demo post link, description (20–2,000 chars), consent.
-- [ ] Payload reviewed by a human before sending. One submission per team, cannot be edited.
-- [ ] Submitted by 14 Nov 18:00 MYT (hard deadline 15 Nov 07:59 MYT).
+- [ ] Submission (form or API): `requestId` (one UUID, reused on retries), project name, team lead, email, team size `2 - 4`, tracks `["realworld","security"]`, prize account, repo link, demo post link, description (20–2,000 chars), consent. No other fields.
+- [ ] Payload reviewed by a human before sending. One submission per project (a second one of the same repo is refused with 409). Mistakes are fixed through https://nearhackathon.com/request-changes, never by submitting again.
+- [ ] Submitted by 14 Nov 23:59 UTC (15 Nov 07:59 MYT). Aim for 14 Nov 18:00 MYT.
 
 ---
 
@@ -884,15 +890,15 @@ Follow `HACKATHON.md` for the exact field rules.
 10. The contract checks limits, not correctness: an agent can still propose a wrong amount below the wage cap, so the owner reviews the preview before running payroll.
 11. The payout partner's 1.0% all-in fee (including FX margin) and the DuitNow off-ramp's 0.5% fee are assumptions, not quotes.
 12. Lender privacy hides who a lender is, not how much they lend. Pool deposits and share balances are public, and a deposit can be matched by amount and time to the swap that funded it. The mock solver's limits (§8.9, R16) are server policy, kept in memory per server instance.
-13. Confidential Intents isn't available on testnet, so Homeroll simulates that layer. The payouts you see are real testnet transfers and are publicly visible. In production they settle on NEAR's private shard. Even then, while the payroll contract runs on the public chain, `submit_run` shows every wage (Q10). The payout rail's used nonces and quotes live in memory per server instance. The approval that lets `pay_run` batches go ahead is a sealed token, so it works across instances.
+13. Confidential Intents isn't available on testnet, so Homeroll simulates that layer. The payouts you see are real testnet transfers and are publicly visible. In production they settle on NEAR's private shard. Even then, while the payroll contract runs on the public chain, `submit_run` shows every wage (Q10). With Supabase set (§8.7) the payout rail's used nonces and quotes are rows shared by every server instance; without it they live in memory per instance. The approval that lets `pay_run` batches go ahead is a sealed token, so it works across instances.
 14. The demo pays October 2026 (`fixtures/company.json`). The contract only accepts the current or previous month (R14), so from 1 December 2026 Run payroll needs that period moved forward.
 15. `update_cap` and `withdraw` (§7.3) are not in the payroll contract yet. The app does not call them.
-16. The app keeps some state in memory and in `apps/web/.data/`: the live demo company, relayer limits, activity log, mock receipts and payout quotes. Run it as one long-lived server (`pnpm --filter web build && pnpm --filter web start`). Serverless hosting would need that state moved to storage such as Supabase (§8.7).
+16. Off-chain state (the live demo company, relayer claims, activity log, mock receipts, payout quotes and nonces) goes to Supabase when `SUPABASE_URL` is set, which serverless hosting such as Vercel needs (§8.7). Without it, that state lives in memory and in `apps/web/.data/`, so run one long-lived server (`pnpm --filter web build && pnpm --filter web start`). The mock solver's deposit limits (R16) stay in memory per server instance either way.
 17. Speed depends on free testnet RPC tiers (FastNEAR, dRPC). Reset demo takes about 40–70 s and each chain write about 2 s (measured 9 Nov 2026, §8.8); under rate limits the app waits and retries. The README asks judges to wait for Reset demo to finish.
 
 ### Future roadmap
 
-- **Idle pool cash earns yield in Rhea Lend** (hackathon partner). This build only shows Rhea's live USDC rate on `/lender` (read-only, §8.10). Money in the pool that is not lent out would be supplied to Rhea Lend's USDC market. The pool would keep a cash buffer for new advances and put only the excess into Rhea. When an invoice is approved for an advance larger than the buffer, the pool withdraws from Rhea first, then pays the advance.
+- **Idle pool cash earns yield in Rhea Lend** (hackathon partner). This build does not touch Rhea; a read-only rate card on `/lender` is designed but not built (§8.10). Money in the pool that is not lent out would be supplied to Rhea Lend's USDC market. The pool would keep a cash buffer for new advances and put only the excess into Rhea. When an invoice is approved for an advance larger than the buffer, the pool withdraws from Rhea first, then pays the advance.
   - Supplied USDC has no lock-up or unstaking wait. It can be withdrawn at any time in one transaction, unless the market is 100% borrowed at that moment (Rhea guide, "Supplying").
   - Why it is not in this build: Rhea Lend runs on mainnet only (its testnet has no lending), so it would need real funds. It would also need a pool contract change, an extra asynchronous withdraw step before each advance, and accrued interest counted in the pool's value. Each of those is money-moving code that needs its own guards and attack scripts.
   - Risks we would handle first: the lending contract lost USD 18.4M to an exploit in April 2026, so moving lenders' money there would start with an admin-approved limit rather than an automatic sweep. A fully borrowed market can briefly block withdrawals, and the supply rate changes over time.

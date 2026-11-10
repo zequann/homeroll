@@ -138,13 +138,22 @@ pnpm demo:reset           # a fresh demo company on testnet, as the Reset demo b
 13. Confidential Intents is simulated: payouts are real, public testnet transfers. Even in production, while the payroll contract runs on the public chain, `submit_run` shows every wage.
 14. The demo pays October 2026. The contract only accepts the current or previous month, so from 1 December 2026 Run payroll needs the fixture period moved forward.
 15. `update_cap` and `withdraw` (SPEC §7.3) are not in the payroll contract yet. The app does not call them.
-16. The app keeps some state in memory and in `apps/web/.data/`, so it runs as one long-lived server (`pnpm --filter web build && pnpm --filter web start`).
+16. Off-chain state (the live demo company, relayer claims, activity log, mock receipts, payout nonces) is kept in Supabase when `SUPABASE_URL` is set, as on serverless hosting. Without it, it lives in memory and in `apps/web/.data/`, so run one long-lived server (`pnpm --filter web build && pnpm --filter web start`).
 17. The mock invoice model reads this project's invoice template only, so other PDFs are refused.
 18. Speed depends on free testnet RPC tiers. Reset demo takes about 40–70 s and each chain write about 2 s; under rate limits (HTTP 429) the app waits and retries, so steps can take longer. A paid RPC plan would remove the limits.
 
 ## Related work
 
 - **OutLayer** (hackathon partner) keeps an agent's keys inside secure hardware and proves what code ran. Homeroll takes a different route: NEAR's own function-call keys make the agent's key unable to move money in the first place, and the payroll rules live in our contract.
+
+## Built during the hackathon
+
+All code in this repo was written during NEAR HACKATHON: the first commit is from 3 November 2026, and there is no earlier project. Libraries are listed under Stack below. Other things we did not write ourselves:
+
+- The `tusdc` contract uses the reference fungible-token implementation from `near-contract-standards` (NEP-141).
+- The contract workspace follows the `cargo near new` template.
+- Most of the code was written with AI coding agents (Claude Code and Cursor), working from `SPEC.md` and `CLAUDE.md`; their commits carry a `Co-Authored-By` line.
+- `.agents/skills/` holds two third-party agent skills used for UI design work, each with its own license: `apple-design` (emilkowalski/skills) and `stageshow` (benjitaylor/skills). The app does not import them.
 
 ## Stack
 

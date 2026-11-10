@@ -41,7 +41,7 @@ Pin exact versions when you first add each dependency. Record the chosen version
 Two people, each running their own coding-agent session in their own area (SPEC §16):
 
 - **On-chain dev:** `contracts/`, `scripts/`, `apps/web/app/api/agents`, `apps/web/app/api/relay`, `apps/web/app/api/demo`, `apps/web/lib/agents`, `NearChainClient`.
-- **App dev — app and demo:** app pages (including the Reset demo button), `FakeChainClient`, `lib/remit`, `lib/cashout`, `lib/fx`, `lib/intents`, `lib/deposit`, `lib/rhea`, `app/api/mock`, `fixtures/`, invoice template generator, README draft.
+- **App dev — app and demo:** app pages (including the Reset demo button), `FakeChainClient`, `lib/remit`, `lib/cashout`, `lib/fx`, `lib/intents`, `lib/deposit`, `lib/rhea` (not built), `app/api/mock`, `fixtures/`, invoice template generator, README draft.
 - **Shared:** `packages/shared` (types, error codes, invoice hash, invoice template). Change only when both agree.
 
 At the start of a session, confirm which area you are working in. Do not edit the other area's files without saying so first.
@@ -53,13 +53,17 @@ contracts/          common/ (error codes), tusdc, factory, payroll, pool, tests/
 apps/web/           Next.js app: /owner /worker /lab /lender, api/agents, api/relay, api/demo, api/mock
 apps/web/lib/near/  ChainClient interface + FakeChainClient + NearChainClient
 apps/web/lib/intents/ 1Click quote client, shared by Send home and lender deposits
-apps/web/lib/rhea/  read-only Rhea Lend USDC rate (mainnet view call, display only)
+apps/web/lib/deposit/ private lender deposit from any chain: quote, R16 limits, mock routing and delivery (SPEC §8.9)
+apps/web/lib/payout/  mock confidential payout rail: payout intent, NEP-413 owner approval, R17 checks (SPEC §8.11)
+apps/web/lib/store/   off-chain rows: Supabase over fetch, in memory when SUPABASE_URL is unset (SPEC §8.7)
+apps/web/e2e/      Playwright + axe browser tests (fake chain and testnet configs)
 packages/shared/    invoice hash, invoice template + generator, types, error codes, fixture loader (used by app, scripts, tests)
 supabase/           schema.sql: off-chain tables (SPEC §8.7), run once in the Supabase SQL Editor
 fixtures/           synthetic company, 40 workers (pseudonymous accounts), 3 invoices (+ tampered PDF, generated from the template), timesheets
-scripts/            deploy-testnet, seed, demo-reset, attacks/, measure/
-docs/               architecture.md, adr/ (decisions with trade-offs), agents/ (skill config)
-.scratch/           local issue tracker, one folder per feature
+scripts/            deploy-testnet, seed-testnet, demo-reset, fund-company, prove-relay, upgrade-payroll-testnet, attacks/
+docs/               adr/ (decisions with trade-offs), agents/ (skill config)
+.scratch/           local issue tracker, one folder per feature (not committed)
+.github/workflows/  ci.yml: Biome, typecheck, vitest, cargo fmt, clippy, cargo test
 GLOSSARY.md         domain terms: use these words in code, tests, UI and issues
 HACKATHON.md        official agent brief from the organizers (dates, rules, submission API)
 ```
