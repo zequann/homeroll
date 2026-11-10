@@ -20,7 +20,7 @@ import type { AdminStep } from "../deploy/deploy";
 import { type Units, units } from "../fx/index.ts";
 import type { AdminSigner, RelayerSigner, WorkerSigner } from "../keys";
 import type { PayableBytes } from "../relay/relay";
-import { rpcUrls, sendWithRetry } from "./rpc-retry.ts";
+import { rpcUrls, sendWithRetry, txRpcUrls } from "./rpc-retry.ts";
 
 export type CodeHash = string & { readonly __codeHash: "CodeHash" };
 
@@ -73,17 +73,19 @@ export function configureRpc(url: string): void {
  */
 class RetryingRpcProvider extends JsonRpcProvider {
   private readonly urls: string[];
+  private readonly txUrls: string[];
   private readonly endpoints: Map<string, JsonRpcProvider>;
 
   // No parameter properties: scripts load this file with node --experimental-strip-types
-  constructor(urls: string[]) {
+  constructor(urls: string[], txUrls: string[]) {
     super({ url: urls[0] ?? "" });
     this.urls = urls;
+    this.txUrls = txUrls;
     // near-api-js's own retries (500, 503, 408, fetch errors) resend the same bytes. Its default of
     // 12 tries with a 1.5x backoff takes ~95 s, so a dead endpoint held a reset for minutes; 4 tries
     // take ~4 s, then rpc-retry moves a read to the next endpoint.
     this.endpoints = new Map(
-      urls.map((url) => [
+      [...new Set([...urls, ...txUrls])].map((url) => [
         url,
         new JsonRpcProvider({ url }, { retries: 4, wait: 500, backoff: 1.5 }),
       ]),
@@ -92,11 +94,17 @@ class RetryingRpcProvider extends JsonRpcProvider {
 
   // biome-ignore lint/suspicious/noExplicitAny: forwards near-api-js's generic signature unchanged
   override sendJsonRpc(method: any, params: any): Promise<any> {
-    return sendWithRetry(this.urls, String(method), (url) => {
-      const endpoint = this.endpoints.get(url);
-      if (!endpoint) throw new Error(`No RPC endpoint for ${url}`);
-      return endpoint.sendJsonRpc(method, params);
-    });
+    return sendWithRetry(
+      this.urls,
+      String(method),
+      (url) => {
+        const endpoint = this.endpoints.get(url);
+        if (!endpoint) throw new Error(`No RPC endpoint for ${url}`);
+        return endpoint.sendJsonRpc(method, params);
+      },
+      undefined,
+      this.txUrls,
+    );
   }
 }
 
@@ -105,8 +113,9 @@ let cached: { key: string; provider: RetryingRpcProvider } | null = null;
 function provider(): JsonRpcProvider {
   if (!rpcUrl) throw new Error("NEAR_RPC_URL is not set");
   const urls = rpcUrls(rpcUrl);
-  const key = urls.join(",");
-  if (cached?.key !== key) cached = { key, provider: new RetryingRpcProvider(urls) };
+  const txUrls = txRpcUrls(rpcUrl);
+  const key = `${urls.join(",")}|${txUrls.join(",")}`;
+  if (cached?.key !== key) cached = { key, provider: new RetryingRpcProvider(urls, txUrls) };
   return cached.provider;
 }
 
