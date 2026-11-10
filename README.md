@@ -4,6 +4,8 @@
 
 Homeroll gives Malaysian SMEs an invoice advance, pays their foreign workers through a guarded payroll contract on NEAR, and lets workers send money home cheaply. AI agents propose payments; NEAR contracts and access keys decide.
 
+**Live demo: https://homeroll.vercel.app** (NEAR testnet, shared demo company, no wallet needed).
+
 Built for NEAR HACKATHON. Everything runs on NEAR testnet with synthetic data. Nothing in this repo moves real money. The full behaviour, numbers and rules are in [`SPEC.md`](SPEC.md); the words used are in [`GLOSSARY.md`](GLOSSARY.md).
 
 ## The problem
@@ -51,6 +53,10 @@ NEAR features used: function-call access keys, meta-transactions (NEP-366), NEAR
 Payouts in this build are public testnet transfers. The UI never claims they are private.
 
 ## Try it
+
+**Hosted:** open https://homeroll.vercel.app and follow the steps below. It runs on NEAR testnet and stays up through judging (at least 18 Nov 2026). Everyone shares one demo company, so press **Reset demo** first if it is mid-run.
+
+**Locally:**
 
 ```bash
 pnpm install

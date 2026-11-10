@@ -867,7 +867,7 @@ Follow `HACKATHON.md` for the exact field rules, and re-read the live copy (http
 - [x] A `LICENSE` file in the repo root (rule Q-014): MIT.
 - [ ] README written for human and AI judges: what it is, the problem, "do X → see Y" steps, why NEAR, known limitations, related work. No marketing. It lists libraries, templates and AI coding tools used (Q-005) and says all code was written in the hackathon window (first commit 3 Nov 2026, Q-001).
 - [ ] Public post on the on-chain dev's X saying it was built at NEAR HACKATHON, tagging @NEARProtocol and #NEARHackathon (optionally @NearLegion and @NearBuilders), with the demo video attached. A video is required when judges cannot open a hosted demo (Q-012).
-- [ ] Hosted demo, if any, linked from the README and kept up until at least 18 Nov 2026, ideally 25 Nov (Q-012).
+- [x] Hosted demo at https://homeroll.vercel.app, linked from the README. Keep it up until at least 18 Nov 2026, ideally 25 Nov (Q-012).
 - [ ] Mainnet NEAR account for the prize, created by the team (an implicit account is free).
 - [ ] Submission (form or API): `requestId` (one UUID, reused on retries), project name, team lead, email, team size `2 - 4`, tracks `["realworld","security"]`, prize account, repo link, demo post link, description (20–2,000 chars), consent. No other fields.
 - [ ] Payload reviewed by a human before sending. One submission per project (a second one of the same repo is refused with 409). Mistakes are fixed through https://nearhackathon.com/request-changes, never by submitting again.
