@@ -13,6 +13,20 @@ import { getChainClient, getFixtures } from "@/lib/near";
 import type { AccessKeyView, Grade, LineStatus } from "@/lib/near/client";
 import { period } from "@/lib/near/client";
 
+/**
+ * The live demo company is not on the chain. Expected on a fresh deploy, before anyone has
+ * pressed Reset demo (or after the off-chain rows that name the live company were cleared).
+ * The owner page shows how to fix it instead of crashing.
+ */
+export class CompanyNotFound extends Error {
+  readonly employer: string;
+  constructor(employer: string) {
+    super(`The chain does not know ${employer}`);
+    this.name = "CompanyNotFound";
+    this.employer = employer;
+  }
+}
+
 export type PayLineStatus =
   | "Ready"
   | "Reserved"
@@ -166,7 +180,7 @@ export async function loadOwnerView(tab: OwnerTab = "pay-lines"): Promise<OwnerV
     tab === "invoices" ? loadInvoiceResults() : Promise.resolve(new Map()),
     tab === "activity" ? recentActivity() : Promise.resolve([]),
   ]);
-  if (!employerView) throw new Error(`The chain does not know ${employer}`);
+  if (!employerView) throw new CompanyNotFound(employer);
 
   // The line status of a worker is their line in the newest run that has one.
   const statusByAccount = new Map<string, LineStatus>();
