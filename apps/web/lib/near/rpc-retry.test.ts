@@ -6,10 +6,12 @@ import {
   resetRpcBench,
   rpcUrls,
   sendWithRetry,
+  txRpcUrls,
 } from "./rpc-retry";
 
 const A = "https://a.example";
 const B = "https://b.example";
+const C = "https://c.example";
 
 /** The body FastNEAR returns with HTTP 429; near-api-js throws it with `cause: 429`. */
 function throttled(): Error {
@@ -90,6 +92,42 @@ describe("sendWithRetry", () => {
     // B may cap request time (dRPC's free plan cuts send_tx at 2 s), so it never gets a transaction
     expect(bodies).toEqual([`${A}:signed-bytes`, `${A}:signed-bytes`]);
     expect(p.slept).toEqual([100]);
+  });
+
+  it("moves a throttled transaction to its own fallback, never to a read fallback", async () => {
+    const p = policy();
+    const bodies: string[] = [];
+    await sendWithRetry(
+      [A, B],
+      "send_tx",
+      async (url) => {
+        bodies.push(`${url}:signed-bytes`);
+        if (url === A) throw throttled();
+        return "outcome";
+      },
+      p,
+      [A, C],
+    );
+    // The same signed bytes, refused unread by A: C runs it once. B (dRPC-like) is never used.
+    expect(bodies).toEqual([`${A}:signed-bytes`, `${C}:signed-bytes`]);
+    expect(p.slept).toEqual([]);
+  });
+
+  it("does not move a transaction after a network failure, even with a fallback", async () => {
+    let calls = 0;
+    await expect(
+      sendWithRetry(
+        [A, B],
+        "send_tx",
+        async () => {
+          calls += 1;
+          throw new Error("fetch failed");
+        },
+        policy(),
+        [A, C],
+      ),
+    ).rejects.toThrow("fetch failed");
+    expect(calls).toBe(1);
   });
 
   it("never resends a transaction after a network failure, when it may have arrived", async () => {
@@ -182,6 +220,12 @@ describe("rpcUrls", () => {
   it("puts NEAR_RPC_URL first and drops blanks and repeats", () => {
     expect(rpcUrls(A, ` ${B}, ,${A}`)).toEqual([A, B]);
     expect(rpcUrls(A, "")).toEqual([A]);
+  });
+
+  it("gives transactions NEAR's own testnet RPC by default, and none when set empty", () => {
+    expect(txRpcUrls(A, undefined)).toEqual([A, "https://rpc.testnet.near.org"]);
+    expect(txRpcUrls(A, "")).toEqual([A]);
+    expect(txRpcUrls(A, ` ${C} `)).toEqual([A, C]);
   });
 });
 
