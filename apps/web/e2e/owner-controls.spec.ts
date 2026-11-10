@@ -104,6 +104,9 @@ test("Reset demo on the owner page shows the fresh company without a reload", as
     await page.getByRole("button", { name: "Reset demo" }).click();
     await page.getByRole("button", { name: "Press again to reset" }).click();
     await expect(page.getByText(/Short by RM64,600\.00\./)).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("status")).toHaveText(
+      "Reset successful. A fresh demo company is ready.",
+    );
     await expect(page).toHaveURL("/owner");
   });
 });

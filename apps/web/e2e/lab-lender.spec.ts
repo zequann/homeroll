@@ -45,8 +45,12 @@ test("a private deposit reaches the pool from the lender's pseudonymous account"
       await expect(page.getByText(badge, { exact: true })).toBeVisible();
     }
     await page.getByRole("button", { name: "Deposit privately" }).click();
-    await expect(page.getByRole("status")).toContainText("Deposited 999.00 USDC.");
-    await expect(page.getByRole("status")).toContainText("Your name is not on-chain.");
+    await expect(page.getByRole("main").getByRole("status")).toContainText(
+      "Deposited 999.00 USDC.",
+    );
+    await expect(page.getByRole("main").getByRole("status")).toContainText(
+      "Your name is not on-chain.",
+    );
 
     // R16: the mock solver delivers at most 50,000 USDC per deposit
     await amount.fill("60000");

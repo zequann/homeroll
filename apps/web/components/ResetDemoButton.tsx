@@ -8,6 +8,8 @@ import styles from "./ResetDemoButton.module.css";
 import { useActionTransition } from "./useActionTransition";
 
 const ARM_WINDOW_MS = 4000;
+/** How long "Reset successful" stays under the toolbar. */
+const DONE_MS = 6000;
 
 /**
  * Reset demo (SPEC §9.6), once, in the toolbar of every page. First press arms it, a second press
@@ -17,9 +19,17 @@ export function ResetDemoButton({ compact = false }: { compact?: boolean }) {
   const [armed, setArmed] = useState(false);
   // Always re-reads the page after, so the fresh company shows without a reload
   const [pending, start, failed] = useActionTransition();
+  const [done, setDone] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (doneTimer.current) clearTimeout(doneTimer.current);
+    },
+    [],
+  );
 
   const press = () => {
     if (!armed) {
@@ -28,10 +38,19 @@ export function ResetDemoButton({ compact = false }: { compact?: boolean }) {
       return;
     }
     if (timer.current) clearTimeout(timer.current);
+    if (doneTimer.current) clearTimeout(doneTimer.current);
     setArmed(false);
+    setDone(false);
     // A failed reset resumes the same company next time, so pressing again is safe
-    start(() => resetDemo());
+    start(async () => {
+      await resetDemo();
+      setDone(true);
+      doneTimer.current = setTimeout(() => setDone(false), DONE_MS);
+    });
   };
+
+  // Shown once the page has re-read the fresh company, not while it is still loading
+  const showDone = done && !pending;
 
   const label = armed ? "Press again to reset" : "Reset demo";
   return (
@@ -47,6 +66,10 @@ export function ResetDemoButton({ compact = false }: { compact?: boolean }) {
         {/* Armed, the label shows on a phone too: the second press needs saying */}
         <span className={compact && !armed ? styles.compactLabel : undefined}>{label}</span>
       </Button>
+      {/* Always in the page, so screen readers announce the text when it appears */}
+      <span className={showDone ? `${styles.note} t-caption` : "sr-only"} role="status">
+        {showDone ? "Reset successful. A fresh demo company is ready." : ""}
+      </span>
       {failed ? (
         <span className={`${styles.error} t-caption ink-2`} role="alert">
           Reset demo could not finish: the testnet RPC is busy. Wait a minute, then press it again.
